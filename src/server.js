@@ -7,17 +7,26 @@ const { syncChannelMembers } = require('./members');
 const { reloadSummaryCron } = require('./scheduler');
 
 function basicAuth(req, res, next) {
-  const user = process.env.DASHBOARD_USER;
-  const pass = process.env.DASHBOARD_PASS;
-  if (!user || !pass) return next(); // 環境変数未設定時はスルー
+  const adminUser = process.env.DASHBOARD_USER;
+  const adminPass = process.env.DASHBOARD_PASS;
+  if (!adminUser || !adminPass) { req.role = 'admin'; return next(); }
 
   const auth = req.headers.authorization;
   if (auth?.startsWith('Basic ')) {
     const [u, p] = Buffer.from(auth.slice(6), 'base64').toString().split(':');
-    if (u === user && p === pass) return next();
+    if (u === adminUser && p === adminPass) { req.role = 'admin'; return next(); }
+    // 閲覧者アカウント（VIEWER_USER / VIEWER_PASS）
+    const vUser = process.env.VIEWER_USER;
+    const vPass = process.env.VIEWER_PASS;
+    if (vUser && vPass && u === vUser && p === vPass) { req.role = 'viewer'; return next(); }
   }
   res.set('WWW-Authenticate', 'Basic realm="日報チェッカー"');
   res.status(401).send('認証が必要です');
+}
+
+function requireAdmin(req, res, next) {
+  if (req.role !== 'admin') return res.status(403).json({ error: '管理者権限が必要です' });
+  next();
 }
 
 function createServer() {
@@ -25,6 +34,9 @@ function createServer() {
   server.use(basicAuth);
   server.use(express.json());
   server.use(express.static(path.join(__dirname, '..', 'public')));
+
+  // ── 自分のロール ─────────────────────────────────────────────────────────
+  server.get('/api/me', (req, res) => res.json({ role: req.role || 'admin' }));
 
   // ── Dashboard ────────────────────────────────────────────────────────────
   server.get('/api/dashboard', (req, res) => {
@@ -100,7 +112,7 @@ function createServer() {
   });
 
   // ── Check ────────────────────────────────────────────────────────────────
-  server.post('/api/check/run', async (req, res) => {
+  server.post('/api/check/run', requireAdmin, async (req, res) => {
     const date = req.body?.date || todayJst();
     try {
       const results = await runCheckForDate(date);
@@ -115,7 +127,7 @@ function createServer() {
     res.json(db.getAllConfigRows());
   });
 
-  server.patch('/api/config/:key', (req, res) => {
+  server.patch('/api/config/:key', requireAdmin, (req, res) => {
     const { key } = req.params;
     const { value } = req.body;
     try {
@@ -228,7 +240,7 @@ function createServer() {
     res.json(members);
   });
 
-  server.patch('/api/members/:userId', (req, res) => {
+  server.patch('/api/members/:userId', requireAdmin, (req, res) => {
     const { userId } = req.params;
     const { group_id, is_active } = req.body;
     try {
@@ -240,7 +252,7 @@ function createServer() {
     }
   });
 
-  server.post('/api/members/sync', async (req, res) => {
+  server.post('/api/members/sync', requireAdmin, async (req, res) => {
     try {
       await syncChannelMembers();
       res.json({ ok: true });
@@ -260,7 +272,7 @@ function createServer() {
     res.json(allGroups.map(g => ({ ...g, member_count: countByGroup[g.id] || 0 })));
   });
 
-  server.post('/api/groups', (req, res) => {
+  server.post('/api/groups', requireAdmin, (req, res) => {
     const { name, parent_id } = req.body;
     if (!name) return res.status(400).json({ ok: false, error: 'name is required' });
 
@@ -283,7 +295,7 @@ function createServer() {
     }
   });
 
-  server.delete('/api/groups/:id', (req, res) => {
+  server.delete('/api/groups/:id', requireAdmin, (req, res) => {
     const id = parseInt(req.params.id, 10);
     db.deleteGroup(id);
     res.json({ ok: true });

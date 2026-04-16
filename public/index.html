@@ -308,13 +308,13 @@ select.inp { cursor: pointer; }
         <span class="nv-ico">⊞</span><span>ダッシュボード</span>
         <span id="nb" class="nv-badge" style="display:none">0</span>
       </div>
-      <div class="nv" data-view="members" onclick="nav('members')">
+      <div class="nv" data-view="members" onclick="nav('members')" id="nv-members">
         <span class="nv-ico">⊛</span><span>メンバー</span>
       </div>
-      <div class="nv" data-view="groups" onclick="nav('groups')">
+      <div class="nv" data-view="groups" onclick="nav('groups')" id="nv-groups">
         <span class="nv-ico">⊡</span><span>グループ</span>
       </div>
-      <div class="nv" data-view="settings" onclick="nav('settings')">
+      <div class="nv" data-view="settings" onclick="nav('settings')" id="nv-settings">
         <span class="nv-ico">⊕</span><span>設定</span>
       </div>
     </nav>
@@ -345,6 +345,7 @@ const S = {
   groups:   null,
   config:   null,
   loading:  false,
+  role:     'viewer',     // 'admin' | 'viewer' (初期値はviewerで安全側に)
 };
 
 function today() {
@@ -483,7 +484,7 @@ function renderDaily(tabs) {
     <div class="tb-right">
       <input class="inp" type="date" id="d-inp" value="${S.date}" max="${today()}" style="width:148px">
       <button class="btn btn-sec" onclick="fetchDash()">↺ 更新</button>
-      <button class="btn btn-pri" id="run-btn" onclick="runCheck()">▶ チェック実行</button>
+      ${S.role === 'admin' ? `<button class="btn btn-pri" id="run-btn" onclick="runCheck()">▶ チェック実行</button>` : ''}
     </div>
   </div>`;
 
@@ -578,7 +579,7 @@ function renderTblHd() {
 function renderMR(m, cfg) {
   const { user, check, report } = m;
   const name = user.display_name || user.real_name || user.user_id;
-  const monBtn = `<button class="mon-btn mon-on" onclick="toggleMon('${user.user_id}',0)" title="監視停止">監視中</button>`;
+  const monBtn = S.role === 'admin' ? `<button class="mon-btn mon-on" onclick="toggleMon('${user.user_id}',0)" title="監視停止">監視中</button>` : '';
 
   if (!check || !check.posted) {
     return `<div class="mr rm">
@@ -729,7 +730,7 @@ function renderWkMemberRow(m, days, td) {
     </div>`;
   }).join('');
 
-  const monBtn = `<button class="mon-btn mon-on" onclick="toggleMon('${user.user_id}',0)">監視中</button>`;
+  const monBtn = S.role === 'admin' ? `<button class="mon-btn mon-on" onclick="toggleMon('${user.user_id}',0)">監視中</button>` : '';
 
   return `<div class="wg-row">
     <div class="wg-name">
@@ -959,6 +960,15 @@ function fmtP(ratio) {
 /* ════════════════════════════════════════
    Init
 ════════════════════════════════════════ */
+// ロール取得 → 管理メニューの表示制御
+api('GET', '/api/me').then(r => {
+  S.role = r.role || 'viewer';
+  ['members','groups','settings'].forEach(v => {
+    const el = document.getElementById(`nv-${v}`);
+    if (el) el.style.display = S.role === 'admin' ? '' : 'none';
+  });
+});
+
 fetchDash();
 setInterval(() => {
   if (S.view === 'overview') {
