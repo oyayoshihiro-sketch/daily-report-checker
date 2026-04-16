@@ -6,8 +6,23 @@ const { runCheckForDate, todayJst } = require('./checker');
 const { syncChannelMembers } = require('./members');
 const { reloadSummaryCron } = require('./scheduler');
 
+function basicAuth(req, res, next) {
+  const user = process.env.DASHBOARD_USER;
+  const pass = process.env.DASHBOARD_PASS;
+  if (!user || !pass) return next(); // 環境変数未設定時はスルー
+
+  const auth = req.headers.authorization;
+  if (auth?.startsWith('Basic ')) {
+    const [u, p] = Buffer.from(auth.slice(6), 'base64').toString().split(':');
+    if (u === user && p === pass) return next();
+  }
+  res.set('WWW-Authenticate', 'Basic realm="日報チェッカー"');
+  res.status(401).send('認証が必要です');
+}
+
 function createServer() {
   const server = express();
+  server.use(basicAuth);
   server.use(express.json());
   server.use(express.static(path.join(__dirname, '..', 'public')));
 
