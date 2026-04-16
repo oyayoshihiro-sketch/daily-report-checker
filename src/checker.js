@@ -75,7 +75,9 @@ async function checkMember(member, date) {
 
   let sentimentFlag = 0, sentimentScore = null;
   try {
-    const r = await analyzeReport(report.text);
+    const prevCheck   = db.getLatestCheck(member.user_id);
+    const prevScore   = prevCheck && prevCheck.check_date !== date ? prevCheck.sentiment_score : null;
+    const r = await analyzeReport(report.text, prevScore);
     sentimentScore = r.score;
     sentimentFlag = r.score < cfg.get('sentiment_threshold') ? 1 : 0;
   } catch (e) {
