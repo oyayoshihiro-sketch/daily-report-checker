@@ -16,6 +16,7 @@ const VALID_KEYS = new Set([
   'late_night_hour', 'sentiment_threshold', 'volume_lookback_days',
   'volume_change_pct', 'volume_min_samples', 'summary_cron',
   'report_channel_id', 'workflow_bot_id', 'user_id_regex',
+  'sentiment_prompt',
 ]);
 
 function set(key, value) {

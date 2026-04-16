@@ -970,12 +970,30 @@ function renderSettingsV() {
   const rows = items.map(r => `<div class="cr">
     <div><div class="cr-lbl">${r.lbl}</div><div class="cr-desc">${r.desc}</div></div>
     <div class="cr-ctrl">
-      <input class="inp" id="c-${r.key}" value="${cm[r.key]?.value??''}" placeholder="${r.ph}" style="width:196px">
+      <input class="inp" id="c-${r.key}" value="${(cm[r.key]?.value??'').replace(/"/g,'&quot;')}" placeholder="${r.ph}" style="width:196px">
       <button class="btn btn-sec btn-sm" onclick="saveCfg('${r.key}')">保存</button>
     </div>
   </div>`).join('');
+
+  const promptVal = (cm['sentiment_prompt']?.value ?? '').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
   return `<div class="topbar"><div class="tb-left"><div class="tb-title">設定</div><div class="tb-sub">チェック条件と収集チャンネルの設定</div></div></div>
-  <div class="card">${rows}</div>`;
+  <div class="card">${rows}</div>
+  <div class="sec" style="margin-top:8px">
+    <div class="sec-ttl">🤖 AI感情分析プロンプト</div>
+    <div class="card">
+      <div style="padding:16px 20px">
+        <div style="font-size:12.5px;color:var(--c-t3);margin-bottom:10px;line-height:1.7">
+          Claudeに送るシステムプロンプトです。<code style="background:var(--c-pri-s);color:var(--c-pri);padding:1px 6px;border-radius:4px;font-size:11.5px">score</code>・<code style="background:var(--c-pri-s);color:var(--c-pri);padding:1px 6px;border-radius:4px;font-size:11.5px">label</code>・<code style="background:var(--c-pri-s);color:var(--c-pri);padding:1px 6px;border-radius:4px;font-size:11.5px">summary</code> を含むJSONを返すよう指示してください。
+        </div>
+        <textarea id="c-sentiment_prompt" style="width:100%;min-height:280px;padding:12px 14px;border:1.5px solid var(--c-bdr2);border-radius:10px;font-size:12.5px;font-family:ui-monospace,'Hiragino Sans',monospace;line-height:1.65;color:var(--c-t1);background:#fafffe;resize:vertical;outline:none;transition:border-color .15s" onfocus="this.style.borderColor='var(--c-grn)'" onblur="this.style.borderColor='var(--c-bdr2)'">${promptVal}</textarea>
+        <div style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end">
+          <button class="btn btn-sec btn-sm" onclick="resetPrompt()">デフォルトに戻す</button>
+          <button class="btn btn-pri btn-sm" onclick="saveCfg('sentiment_prompt')">保存</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
 }
 
 /* ════════════════════════════════════════
@@ -1177,6 +1195,38 @@ async function delUser(id, email) {
   if (!confirm(`"${email}" を削除しますか？`)) return;
   const r = await api('DELETE', `/api/users/${id}`);
   if (r.ok) { toast(`✅ "${email}" を削除しました`, 'ok'); S.dashUsers = null; await fetchDashUsers(); render(); }
+  else toast(`❌ ${r.error}`, 'err');
+}
+
+const DEFAULT_PROMPT = `あなたは日報の感情分析を行うアシスタントです。
+日報テキストを読み、メンバーのコンディションを評価してください。
+
+## 出力形式
+必ず以下のJSONのみを返してください。説明文は不要です。
+{
+  "score": <0.0〜1.0の数値。0.0=非常にネガティブ、0.5=中立、1.0=非常にポジティブ>,
+  "label": <"negative" | "neutral" | "positive">,
+  "summary": <1〜2文の日本語サマリー。懸念点があれば含める>
+}
+
+## スコアの目安
+- 0.0〜0.25: 強いネガティブ（疲弊・強いストレス・諦め・孤立感）
+- 0.25〜0.45: ネガティブ（困難・課題感・不安が前面に出ている）
+- 0.45〜0.65: 中立（事実報告が中心、感情表現は少ない）
+- 0.65〜0.85: ポジティブ（成果・達成感・意欲的）
+- 0.85〜1.0: 強いポジティブ（高い達成感・チームへの貢献実感）
+
+## 注意事項
+- 仕事上の「困難な課題」「タフな交渉」などは文脈で判断する
+- 「疲れた」単体より「疲れて限界」「もう無理」など強度を重視する
+- 敬語・丁寧語が多い日本語ビジネス文書の特性を考慮する
+- JSONのみ返すこと`;
+
+async function resetPrompt() {
+  const el = document.getElementById('c-sentiment_prompt');
+  if (el) el.value = DEFAULT_PROMPT;
+  const r = await api('PATCH', '/api/config/sentiment_prompt', { value: DEFAULT_PROMPT });
+  if (r.ok) { toast('✅ デフォルトに戻しました', 'ok'); S.config = null; await fetchConfig(); render(); }
   else toast(`❌ ${r.error}`, 'err');
 }
 
