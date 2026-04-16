@@ -317,8 +317,12 @@ select.inp { cursor: pointer; }
       <div class="nv" data-view="settings" onclick="nav('settings')" id="nv-settings">
         <span class="nv-ico">⊕</span><span>設定</span>
       </div>
+      <div class="nv" data-view="users" onclick="nav('users')" id="nv-users">
+        <span class="nv-ico">⊙</span><span>ユーザー管理</span>
+      </div>
     </nav>
     <div class="sb-foot">
+      <div id="sb-user" style="margin-bottom:4px;color:#e2e8f0;font-size:12px"></div>
       <div id="sb-cron"></div>
       <div id="sb-ch" style="margin-top:4px"></div>
     </div>
@@ -339,13 +343,15 @@ const S = {
   sub:      'day',        // 'day' | 'week'
   date:     today(),
   weekDate: today(),
-  dash:     null,
-  weekly:   null,
-  members:  null,
-  groups:   null,
-  config:   null,
-  loading:  false,
-  role:     'viewer',     // 'admin' | 'viewer' (初期値はviewerで安全側に)
+  dash:      null,
+  weekly:    null,
+  members:   null,
+  groups:    null,
+  config:    null,
+  dashUsers: null,
+  loading:   false,
+  role:      'viewer',    // 'admin' | 'viewer' (初期値はviewerで安全側に)
+  username:  '',
 };
 
 function today() {
@@ -433,6 +439,7 @@ async function fetchWeekly() {
   S.loading = false; render();
 }
 async function fetchMembers() { const [m,g] = await Promise.all([api('GET','/api/members'), api('GET','/api/groups')]); S.members=m; S.groups=g; }
+async function fetchDashUsers() { S.dashUsers = await api('GET', '/api/users'); }
 async function fetchGroups()  { S.groups  = await api('GET', '/api/groups'); }
 async function fetchConfig()  { S.config  = await api('GET', '/api/config'); }
 
@@ -457,6 +464,7 @@ function render() {
     case 'members':  page.innerHTML = renderMembersV(); break;
     case 'groups':   page.innerHTML = renderGroupsV();  break;
     case 'settings': page.innerHTML = renderSettingsV(); break;
+    case 'users':    page.innerHTML = renderUsersV(); break;
   }
   bindEvt();
 }
@@ -854,6 +862,58 @@ function renderSettingsV() {
 }
 
 /* ════════════════════════════════════════
+   Users view
+════════════════════════════════════════ */
+function renderUsersV() {
+  if (!S.dashUsers) { fetchDashUsers().then(render); return `<div class="spin-wrap"><div class="spinner"></div></div>`; }
+
+  const rows = S.dashUsers.map(u => {
+    const isMe = u.username === S.username;
+    const roleChip = u.role === 'admin'
+      ? `<span class="chip c-b">管理者</span>`
+      : `<span class="chip c-x">閲覧者</span>`;
+    const toggleRole = u.role === 'admin'
+      ? `<button class="btn btn-sec btn-sm" onclick="changeRole(${u.id},'viewer')" ${isMe?'disabled':''}>閲覧者に変更</button>`
+      : `<button class="btn btn-sec btn-sm" onclick="changeRole(${u.id},'admin')">管理者に変更</button>`;
+    return `<div class="cr">
+      <div style="flex:1;min-width:0">
+        <div class="cr-lbl">${u.username} ${isMe?'<span style="font-size:11px;color:var(--c-t3)">(あなた)</span>':''}</div>
+        <div class="cr-desc">登録日: ${u.created_at?.slice(0,10)}</div>
+      </div>
+      <div class="cr-ctrl">
+        ${roleChip}
+        ${toggleRole}
+        <button class="btn btn-sec btn-sm" onclick="resetPw(${u.id},'${u.username}')">PW変更</button>
+        <button class="btn btn-sec btn-sm t-r" onclick="delUser(${u.id},'${u.username}')" ${isMe?'disabled':''}>削除</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  return `<div class="topbar">
+    <div class="tb-left"><div class="tb-title">ユーザー管理</div><div class="tb-sub">ダッシュボードのアクセス権限管理</div></div>
+  </div>
+  <div class="sec"><div class="sec-ttl">ユーザー一覧</div>
+    <div class="card">${rows || '<div style="padding:18px;color:var(--c-t4)">ユーザーなし</div>'}</div>
+  </div>
+  <div class="sec"><div class="sec-ttl">新規ユーザー追加</div>
+    <div class="card">
+      <div class="cr">
+        <div><div class="cr-lbl">ユーザー名 / パスワード / 権限</div><div class="cr-desc">追加後すぐにログイン可能</div></div>
+        <div class="cr-ctrl" style="gap:6px">
+          <input class="inp" id="nu-name" placeholder="ユーザー名" style="width:120px">
+          <input class="inp" id="nu-pass" placeholder="パスワード" type="password" style="width:120px">
+          <select class="inp" id="nu-role" style="width:96px">
+            <option value="viewer">閲覧者</option>
+            <option value="admin">管理者</option>
+          </select>
+          <button class="btn btn-pri" onclick="addUser()">追加</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ════════════════════════════════════════
    Event handlers
 ════════════════════════════════════════ */
 function bindEvt() {
@@ -933,6 +993,37 @@ async function delG(id, name) {
   else toast(`❌ ${r.error}`, 'err');
 }
 
+async function addUser() {
+  const username = document.getElementById('nu-name')?.value.trim();
+  const password = document.getElementById('nu-pass')?.value;
+  const role     = document.getElementById('nu-role')?.value;
+  if (!username || !password) { toast('ユーザー名とパスワードを入力してください', 'err'); return; }
+  const r = await api('POST', '/api/users', { username, password, role });
+  if (r.ok) { toast(`✅ "${username}" を追加しました`, 'ok'); S.dashUsers = null; await fetchDashUsers(); render(); }
+  else toast(`❌ ${r.error}`, 'err');
+}
+
+async function changeRole(id, role) {
+  const r = await api('PATCH', `/api/users/${id}`, { role });
+  if (r.ok) { toast('✅ 権限を変更しました', 'ok'); S.dashUsers = null; await fetchDashUsers(); render(); }
+  else toast(`❌ ${r.error}`, 'err');
+}
+
+async function resetPw(id, username) {
+  const pw = prompt(`"${username}" の新しいパスワードを入力してください:`);
+  if (!pw) return;
+  const r = await api('PATCH', `/api/users/${id}`, { password: pw });
+  if (r.ok) toast('✅ パスワードを変更しました', 'ok');
+  else toast(`❌ ${r.error}`, 'err');
+}
+
+async function delUser(id, username) {
+  if (!confirm(`"${username}" を削除しますか？`)) return;
+  const r = await api('DELETE', `/api/users/${id}`);
+  if (r.ok) { toast(`✅ "${username}" を削除しました`, 'ok'); S.dashUsers = null; await fetchDashUsers(); render(); }
+  else toast(`❌ ${r.error}`, 'err');
+}
+
 async function saveCfg(key) {
   const val = document.getElementById(`c-${key}`)?.value;
   if (val === undefined) return;
@@ -963,10 +1054,13 @@ function fmtP(ratio) {
 // ロール取得 → 管理メニューの表示制御
 api('GET', '/api/me').then(r => {
   S.role = r.role || 'viewer';
-  ['members','groups','settings'].forEach(v => {
+  S.username = r.username || '';
+  ['members','groups','settings','users'].forEach(v => {
     const el = document.getElementById(`nv-${v}`);
     if (el) el.style.display = S.role === 'admin' ? '' : 'none';
   });
+  const foot = document.getElementById('sb-user');
+  if (foot && S.username) foot.textContent = `👤 ${S.username}`;
 });
 
 fetchDash();

@@ -1,24 +1,54 @@
 const express = require('express');
 const path = require('path');
+const crypto = require('crypto');
 const db = require('./db');
 const cfg = require('./config');
 const { runCheckForDate, todayJst } = require('./checker');
 const { syncChannelMembers } = require('./members');
 const { reloadSummaryCron } = require('./scheduler');
 
+// ── パスワードハッシュ ────────────────────────────────────────────────────────
+
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(password, salt, 64).toString('hex');
+  return `${salt}:${hash}`;
+}
+
+function verifyPassword(password, stored) {
+  try {
+    const [salt, hash] = stored.split(':');
+    const buf = crypto.scryptSync(password, salt, 64);
+    return crypto.timingSafeEqual(buf, Buffer.from(hash, 'hex'));
+  } catch { return false; }
+}
+
+// ── 初期管理者シード（環境変数 → DB） ────────────────────────────────────────
+
+function seedInitialAdmin() {
+  const user = process.env.DASHBOARD_USER;
+  const pass = process.env.DASHBOARD_PASS;
+  if (!user || !pass) return;
+  if (db.getAllDashboardUsers().length > 0) return; // 既にユーザーがいれば何もしない
+  db.createDashboardUser(user, hashPassword(pass), 'admin');
+  console.log(`[auth] Initial admin created: ${user}`);
+}
+
+// ── 認証ミドルウェア ──────────────────────────────────────────────────────────
+
 function basicAuth(req, res, next) {
-  const adminUser = process.env.DASHBOARD_USER;
-  const adminPass = process.env.DASHBOARD_PASS;
-  if (!adminUser || !adminPass) { req.role = 'admin'; return next(); }
+  const users = db.getAllDashboardUsers();
+  if (users.length === 0) { req.role = 'admin'; return next(); } // ユーザー未設定時はスルー
 
   const auth = req.headers.authorization;
   if (auth?.startsWith('Basic ')) {
     const [u, p] = Buffer.from(auth.slice(6), 'base64').toString().split(':');
-    if (u === adminUser && p === adminPass) { req.role = 'admin'; return next(); }
-    // 閲覧者アカウント（VIEWER_USER / VIEWER_PASS）
-    const vUser = process.env.VIEWER_USER;
-    const vPass = process.env.VIEWER_PASS;
-    if (vUser && vPass && u === vUser && p === vPass) { req.role = 'viewer'; return next(); }
+    const user = db.getDashboardUser(u);
+    if (user && verifyPassword(p, user.password_hash)) {
+      req.role = user.role;
+      req.authUser = { id: user.id, username: user.username, role: user.role };
+      return next();
+    }
   }
   res.set('WWW-Authenticate', 'Basic realm="日報チェッカー"');
   res.status(401).send('認証が必要です');
@@ -30,13 +60,17 @@ function requireAdmin(req, res, next) {
 }
 
 function createServer() {
+  seedInitialAdmin();
+
   const server = express();
   server.use(basicAuth);
   server.use(express.json());
   server.use(express.static(path.join(__dirname, '..', 'public')));
 
-  // ── 自分のロール ─────────────────────────────────────────────────────────
-  server.get('/api/me', (req, res) => res.json({ role: req.role || 'admin' }));
+  // ── 自分の情報 ───────────────────────────────────────────────────────────
+  server.get('/api/me', (req, res) => {
+    res.json({ role: req.role || 'admin', username: req.authUser?.username });
+  });
 
   // ── Dashboard ────────────────────────────────────────────────────────────
   server.get('/api/dashboard', (req, res) => {
@@ -76,7 +110,6 @@ function createServer() {
       const flagged = enriched.filter(m => (m.check?.flag_count ?? 0) > 0).length;
       const critical = enriched.filter(m => (m.check?.flag_count ?? 0) >= 3).length;
 
-      // グループツリー
       const topGroups = allGroups.filter(g => !g.parent_id);
       const groupTree = topGroups.map(top => {
         const children = allGroups.filter(g => g.parent_id === top.id).map(child => ({
@@ -149,7 +182,6 @@ function createServer() {
       const allMembers = db.getActiveMembers();
       const groupMap   = Object.fromEntries(allGroups.map(g => [g.id, g]));
 
-      // 週全体の日報・チェックを一括取得
       const reports = db.getReportsForDateRange(days[0], days[6]);
       const checks  = db.getChecksForDateRange(days[0], days[6]);
 
@@ -173,15 +205,15 @@ function createServer() {
           const posted = !!(report || check?.posted);
           dayData[day] = {
             posted,
-            checked:        !!check,
-            flag_count:     check?.flag_count     ?? 0,
-            late_night_flag: check?.late_night_flag ?? 0,
-            sentiment_flag: check?.sentiment_flag  ?? 0,
-            volume_flag:    check?.volume_flag     ?? 0,
-            posted_at:      report?.posted_at || null,
-            char_count:     report?.char_count ?? null,
-            is_future:      day > today,
-            is_weekend:     isWeekend(day),
+            checked:         !!check,
+            flag_count:      check?.flag_count      ?? 0,
+            late_night_flag: check?.late_night_flag  ?? 0,
+            sentiment_flag:  check?.sentiment_flag   ?? 0,
+            volume_flag:     check?.volume_flag      ?? 0,
+            posted_at:       report?.posted_at || null,
+            char_count:      report?.char_count ?? null,
+            is_future:       day > today,
+            is_weekend:      isWeekend(day),
           };
         }
 
@@ -194,7 +226,6 @@ function createServer() {
         };
       });
 
-      // グループツリー
       const topGroups = allGroups.filter(g => !g.parent_id);
       const groupTree = topGroups.map(top => ({
         id: top.id, name: top.name,
@@ -206,7 +237,6 @@ function createServer() {
       }));
       const ungrouped = enriched.filter(m => !m.user.group);
 
-      // 週次集計（過去日・平日のみカウント）
       let totalExpected = 0, totalPosted = 0, totalFlagged = 0;
       for (const m of enriched) {
         for (const day of days) {
@@ -229,7 +259,6 @@ function createServer() {
   });
 
   // ── Members ──────────────────────────────────────────────────────────────
-  // 管理ビュー用: 非監視メンバーも含む全員を返す
   server.get('/api/members', (req, res) => {
     const allGroups = db.getAllGroups();
     const groupMap  = Object.fromEntries(allGroups.map(g => [g.id, g]));
@@ -275,15 +304,12 @@ function createServer() {
   server.post('/api/groups', requireAdmin, (req, res) => {
     const { name, parent_id } = req.body;
     if (!name) return res.status(400).json({ ok: false, error: 'name is required' });
-
-    // 2階層チェック
     if (parent_id) {
       const parent = db.getGroup(parent_id);
       if (parent?.parent_id) {
         return res.status(400).json({ ok: false, error: '階層は2段まで（サブグループの下にはグループを作れません）' });
       }
     }
-
     try {
       const result = db.createGroup(name, parent_id || null);
       res.json({ ok: true, id: result.lastInsertRowid });
@@ -301,14 +327,68 @@ function createServer() {
     res.json({ ok: true });
   });
 
+  // ── Dashboard Users ───────────────────────────────────────────────────────
+  server.get('/api/users', requireAdmin, (req, res) => {
+    res.json(db.getAllDashboardUsers());
+  });
+
+  server.post('/api/users', requireAdmin, (req, res) => {
+    const { username, password, role } = req.body;
+    if (!username || !password) return res.status(400).json({ ok: false, error: 'username と password は必須です' });
+    if (!['admin', 'viewer'].includes(role)) return res.status(400).json({ ok: false, error: 'role は admin または viewer です' });
+    if (db.getDashboardUser(username)) return res.status(400).json({ ok: false, error: `"${username}" は既に存在します` });
+    try {
+      const result = db.createDashboardUser(username, hashPassword(password), role);
+      res.json({ ok: true, id: result.lastInsertRowid });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  server.patch('/api/users/:id', requireAdmin, (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    const { role, password } = req.body;
+
+    // 自分自身のroleをadmin→viewerに変更不可
+    if (role && role !== 'admin' && req.authUser?.id === id) {
+      return res.status(400).json({ ok: false, error: '自分自身の権限は変更できません' });
+    }
+    // 最後の管理者の権限は変更不可
+    if (role === 'viewer') {
+      const target = db.getDashboardUserById(id);
+      if (target?.role === 'admin' && db.countAdminUsers() <= 1) {
+        return res.status(400).json({ ok: false, error: '管理者が1名のため権限を変更できません' });
+      }
+    }
+
+    const updates = {};
+    if (role) updates.role = role;
+    if (password) updates.passwordHash = hashPassword(password);
+    db.updateDashboardUser(id, updates);
+    res.json({ ok: true });
+  });
+
+  server.delete('/api/users/:id', requireAdmin, (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (req.authUser?.id === id) {
+      return res.status(400).json({ ok: false, error: '自分自身は削除できません' });
+    }
+    const target = db.getDashboardUserById(id);
+    if (target?.role === 'admin' && db.countAdminUsers() <= 1) {
+      return res.status(400).json({ ok: false, error: '管理者が1名のため削除できません' });
+    }
+    db.deleteDashboardUser(id);
+    res.json({ ok: true });
+  });
+
   return server;
 }
 
 // 指定日を含む週の月〜日（ISO日付配列）
 function weekDays(dateStr) {
   const d   = new Date(dateStr + 'T00:00:00Z');
-  const dow = d.getUTCDay(); // 0=Sun
-  const offset = dow === 0 ? 6 : dow - 1; // 月曜に戻す日数
+  const dow = d.getUTCDay();
+  const offset = dow === 0 ? 6 : dow - 1;
   const mon = new Date(d.getTime() - offset * 86400000);
   return Array.from({ length: 7 }, (_, i) =>
     new Date(mon.getTime() + i * 86400000).toISOString().slice(0, 10)

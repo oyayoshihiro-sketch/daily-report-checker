@@ -85,6 +85,15 @@ function initTables() {
       description TEXT,
       updated_at TEXT    NOT NULL DEFAULT (datetime('now'))
     );
+
+    -- ダッシュボードユーザー
+    CREATE TABLE IF NOT EXISTS dashboard_users (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      username      TEXT    NOT NULL UNIQUE,
+      password_hash TEXT    NOT NULL,
+      role          TEXT    NOT NULL DEFAULT 'viewer', -- 'admin' | 'viewer'
+      created_at    TEXT    NOT NULL DEFAULT (datetime('now'))
+    );
   `);
 }
 
@@ -281,6 +290,44 @@ function getAllMembersRaw() {
   ).all();
 }
 
+// ── dashboard_users ──────────────────────────────────────────────────────────
+
+function getDashboardUser(username) {
+  return getDb().prepare('SELECT * FROM dashboard_users WHERE username = ?').get(username);
+}
+
+function getDashboardUserById(id) {
+  return getDb().prepare('SELECT * FROM dashboard_users WHERE id = ?').get(id);
+}
+
+function getAllDashboardUsers() {
+  return getDb().prepare('SELECT id, username, role, created_at FROM dashboard_users ORDER BY created_at').all();
+}
+
+function createDashboardUser(username, passwordHash, role) {
+  return getDb().prepare('INSERT INTO dashboard_users (username, password_hash, role) VALUES (?, ?, ?)').run(username, passwordHash, role);
+}
+
+function updateDashboardUser(id, { role, passwordHash }) {
+  if (role !== undefined && passwordHash !== undefined) {
+    return getDb().prepare('UPDATE dashboard_users SET role = ?, password_hash = ? WHERE id = ?').run(role, passwordHash, id);
+  }
+  if (role !== undefined) {
+    return getDb().prepare('UPDATE dashboard_users SET role = ? WHERE id = ?').run(role, id);
+  }
+  if (passwordHash !== undefined) {
+    return getDb().prepare('UPDATE dashboard_users SET password_hash = ? WHERE id = ?').run(passwordHash, id);
+  }
+}
+
+function deleteDashboardUser(id) {
+  return getDb().prepare('DELETE FROM dashboard_users WHERE id = ?').run(id);
+}
+
+function countAdminUsers() {
+  return getDb().prepare("SELECT COUNT(*) as cnt FROM dashboard_users WHERE role = 'admin'").get().cnt;
+}
+
 module.exports = {
   getDb,
   upsertReport, getReport, getRecentReports, getReportsForDateRange,
@@ -289,4 +336,6 @@ module.exports = {
   createGroup, getGroup, getAllGroups, getTopGroups, getChildGroups, deleteGroup,
   addAdminChannel, removeAdminChannel, getAdminChannels,
   getConfigRaw, setConfigRaw, getAllConfigRows,
+  getDashboardUser, getDashboardUserById, getAllDashboardUsers,
+  createDashboardUser, updateDashboardUser, deleteDashboardUser, countAdminUsers,
 };
