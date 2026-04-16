@@ -1,0 +1,17 @@
+{
+  "name": "daily-report-checker",
+  "version": "1.0.0",
+  "description": "Slackチャンネルの日報収集・コンディションチェック",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.52.0",
+    "@slack/web-api": "^7.0.0",
+    "better-sqlite3": "^11.9.1",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "node-cron": "^3.0.3"
+  }
+}
