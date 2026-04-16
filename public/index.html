@@ -325,6 +325,7 @@ select.inp { cursor: pointer; }
       <div id="sb-user" style="margin-bottom:4px;color:#e2e8f0;font-size:12px"></div>
       <div id="sb-cron"></div>
       <div id="sb-ch" style="margin-top:4px"></div>
+      <a href="/auth/logout" style="display:inline-block;margin-top:8px;font-size:11.5px;color:#64748b;text-decoration:none;transition:color .12s" onmouseover="this.style.color='#e2e8f0'" onmouseout="this.style.color='#64748b'">ログアウト</a>
     </div>
   </aside>
 
@@ -348,10 +349,12 @@ const S = {
   members:   null,
   groups:    null,
   config:    null,
-  dashUsers: null,
-  loading:   false,
-  role:      'viewer',    // 'admin' | 'viewer' (初期値はviewerで安全側に)
-  username:  '',
+  dashUsers:   null,
+  invitations: null,
+  loading:     false,
+  role:        'viewer',    // 'admin' | 'viewer' (初期値はviewerで安全側に)
+  email:       '',
+  displayName: '',
 };
 
 function today() {
@@ -406,6 +409,7 @@ async function api(method, url, body) {
     headers: body ? {'Content-Type':'application/json'} : {},
     body: body ? JSON.stringify(body) : undefined,
   });
+  if (res.status === 401) { window.location.href = '/login.html'; return {}; }
   return res.json();
 }
 
@@ -439,7 +443,11 @@ async function fetchWeekly() {
   S.loading = false; render();
 }
 async function fetchMembers() { const [m,g] = await Promise.all([api('GET','/api/members'), api('GET','/api/groups')]); S.members=m; S.groups=g; }
-async function fetchDashUsers() { S.dashUsers = await api('GET', '/api/users'); }
+async function fetchDashUsers() {
+  const [users, invs] = await Promise.all([api('GET', '/api/users'), api('GET', '/api/invitations')]);
+  S.dashUsers   = users;
+  S.invitations = invs;
+}
 async function fetchGroups()  { S.groups  = await api('GET', '/api/groups'); }
 async function fetchConfig()  { S.config  = await api('GET', '/api/config'); }
 
@@ -867,8 +875,12 @@ function renderSettingsV() {
 function renderUsersV() {
   if (!S.dashUsers) { fetchDashUsers().then(render); return `<div class="spin-wrap"><div class="spinner"></div></div>`; }
 
-  const rows = S.dashUsers.map(u => {
-    const isMe = u.username === S.username;
+  const users = Array.isArray(S.dashUsers) ? S.dashUsers : [];
+  const invs  = Array.isArray(S.invitations) ? S.invitations : [];
+
+  const userRows = users.map(u => {
+    const isMe = u.email === S.email;
+    const name = u.display_name || u.email;
     const roleChip = u.role === 'admin'
       ? `<span class="chip c-b">管理者</span>`
       : `<span class="chip c-x">閲覧者</span>`;
@@ -877,14 +889,33 @@ function renderUsersV() {
       : `<button class="btn btn-sec btn-sm" onclick="changeRole(${u.id},'admin')">管理者に変更</button>`;
     return `<div class="cr">
       <div style="flex:1;min-width:0">
-        <div class="cr-lbl">${u.username} ${isMe?'<span style="font-size:11px;color:var(--c-t3)">(あなた)</span>':''}</div>
-        <div class="cr-desc">登録日: ${u.created_at?.slice(0,10)}</div>
+        <div class="cr-lbl">${name} ${isMe?'<span style="font-size:11px;color:var(--c-t3)">(あなた)</span>':''}</div>
+        <div class="cr-desc">${u.email} &nbsp;·&nbsp; 登録日: ${u.created_at?.slice(0,10)}</div>
       </div>
       <div class="cr-ctrl">
         ${roleChip}
         ${toggleRole}
-        <button class="btn btn-sec btn-sm" onclick="resetPw(${u.id},'${u.username}')">PW変更</button>
-        <button class="btn btn-sec btn-sm t-r" onclick="delUser(${u.id},'${u.username}')" ${isMe?'disabled':''}>削除</button>
+        <button class="btn btn-sec btn-sm" onclick="resetPw(${u.id},'${u.email}')">PW変更</button>
+        <button class="btn btn-sec btn-sm t-r" onclick="delUser(${u.id},'${u.email}')" ${isMe?'disabled':''}>削除</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  const now = new Date();
+  const invRows = invs.map(iv => {
+    const expired = new Date(iv.expires_at) < now;
+    return `<div class="cr">
+      <div style="flex:1;min-width:0">
+        <div class="cr-lbl">${iv.email}</div>
+        <div class="cr-desc">
+          ${iv.role === 'admin' ? '管理者' : '閲覧者'} &nbsp;·&nbsp;
+          ${expired ? '<span style="color:var(--c-red)">期限切れ</span>' : `有効期限: ${new Date(iv.expires_at).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}`}
+          ${iv.invited_by ? ` &nbsp;·&nbsp; 招待者: ${iv.invited_by}` : ''}
+        </div>
+      </div>
+      <div class="cr-ctrl">
+        <span class="chip ${expired?'c-x':'c-a'}">${expired?'期限切れ':'承認待ち'}</span>
+        <button class="btn btn-sec btn-sm t-r" onclick="cancelInv(${iv.id},'${iv.email}')">取消</button>
       </div>
     </div>`;
   }).join('');
@@ -893,20 +924,22 @@ function renderUsersV() {
     <div class="tb-left"><div class="tb-title">ユーザー管理</div><div class="tb-sub">ダッシュボードのアクセス権限管理</div></div>
   </div>
   <div class="sec"><div class="sec-ttl">ユーザー一覧</div>
-    <div class="card">${rows || '<div style="padding:18px;color:var(--c-t4)">ユーザーなし</div>'}</div>
+    <div class="card">${userRows || '<div style="padding:18px;color:var(--c-t4)">ユーザーなし</div>'}</div>
   </div>
-  <div class="sec"><div class="sec-ttl">新規ユーザー追加</div>
+  ${invs.length ? `<div class="sec"><div class="sec-ttl">招待中 <span class="cnt-badge">${invs.length}</span></div>
+    <div class="card">${invRows}</div>
+  </div>` : ''}
+  <div class="sec"><div class="sec-ttl">招待を送る</div>
     <div class="card">
       <div class="cr">
-        <div><div class="cr-lbl">ユーザー名 / パスワード / 権限</div><div class="cr-desc">追加後すぐにログイン可能</div></div>
+        <div><div class="cr-lbl">メールアドレス &amp; 権限</div><div class="cr-desc">招待メールが届きます。24時間有効。</div></div>
         <div class="cr-ctrl" style="gap:6px">
-          <input class="inp" id="nu-name" placeholder="ユーザー名" style="width:120px">
-          <input class="inp" id="nu-pass" placeholder="パスワード" type="password" style="width:120px">
-          <select class="inp" id="nu-role" style="width:96px">
+          <input class="inp" id="inv-email" placeholder="user@example.com" type="email" style="width:200px">
+          <select class="inp" id="inv-role" style="width:96px">
             <option value="viewer">閲覧者</option>
             <option value="admin">管理者</option>
           </select>
-          <button class="btn btn-pri" onclick="addUser()">追加</button>
+          <button class="btn btn-pri" onclick="sendInv()">招待送信</button>
         </div>
       </div>
     </div>
@@ -993,13 +1026,26 @@ async function delG(id, name) {
   else toast(`❌ ${r.error}`, 'err');
 }
 
-async function addUser() {
-  const username = document.getElementById('nu-name')?.value.trim();
-  const password = document.getElementById('nu-pass')?.value;
-  const role     = document.getElementById('nu-role')?.value;
-  if (!username || !password) { toast('ユーザー名とパスワードを入力してください', 'err'); return; }
-  const r = await api('POST', '/api/users', { username, password, role });
-  if (r.ok) { toast(`✅ "${username}" を追加しました`, 'ok'); S.dashUsers = null; await fetchDashUsers(); render(); }
+async function sendInv() {
+  const email = document.getElementById('inv-email')?.value.trim();
+  const role  = document.getElementById('inv-role')?.value;
+  if (!email) { toast('メールアドレスを入力してください', 'err'); return; }
+  const r = await api('POST', '/api/invitations', { email, role });
+  if (r.ok) {
+    if (r.warning) {
+      toast(`⚠️ ${r.warning}`, '');
+      if (r.inviteUrl) prompt('招待URL（コピーして共有してください）:', r.inviteUrl);
+    } else {
+      toast(`✅ "${email}" に招待を送信しました`, 'ok');
+    }
+    S.dashUsers = null; await fetchDashUsers(); render();
+  } else toast(`❌ ${r.error}`, 'err');
+}
+
+async function cancelInv(id, email) {
+  if (!confirm(`"${email}" への招待を取り消しますか？`)) return;
+  const r = await api('DELETE', `/api/invitations/${id}`);
+  if (r.ok) { toast('✅ 招待を取り消しました', 'ok'); S.dashUsers = null; await fetchDashUsers(); render(); }
   else toast(`❌ ${r.error}`, 'err');
 }
 
@@ -1009,18 +1055,19 @@ async function changeRole(id, role) {
   else toast(`❌ ${r.error}`, 'err');
 }
 
-async function resetPw(id, username) {
-  const pw = prompt(`"${username}" の新しいパスワードを入力してください:`);
+async function resetPw(id, email) {
+  const pw = prompt(`"${email}" の新しいパスワードを入力してください（8文字以上）:`);
   if (!pw) return;
+  if (pw.length < 8) { toast('パスワードは8文字以上で設定してください', 'err'); return; }
   const r = await api('PATCH', `/api/users/${id}`, { password: pw });
   if (r.ok) toast('✅ パスワードを変更しました', 'ok');
   else toast(`❌ ${r.error}`, 'err');
 }
 
-async function delUser(id, username) {
-  if (!confirm(`"${username}" を削除しますか？`)) return;
+async function delUser(id, email) {
+  if (!confirm(`"${email}" を削除しますか？`)) return;
   const r = await api('DELETE', `/api/users/${id}`);
-  if (r.ok) { toast(`✅ "${username}" を削除しました`, 'ok'); S.dashUsers = null; await fetchDashUsers(); render(); }
+  if (r.ok) { toast(`✅ "${email}" を削除しました`, 'ok'); S.dashUsers = null; await fetchDashUsers(); render(); }
   else toast(`❌ ${r.error}`, 'err');
 }
 
@@ -1053,14 +1100,16 @@ function fmtP(ratio) {
 ════════════════════════════════════════ */
 // ロール取得 → 管理メニューの表示制御
 api('GET', '/api/me').then(r => {
-  S.role = r.role || 'viewer';
-  S.username = r.username || '';
+  if (!r.role) return; // 401 → login.htmlへリダイレクト済み
+  S.role        = r.role || 'viewer';
+  S.email       = r.email || '';
+  S.displayName = r.displayName || '';
   ['members','groups','settings','users'].forEach(v => {
     const el = document.getElementById(`nv-${v}`);
     if (el) el.style.display = S.role === 'admin' ? '' : 'none';
   });
   const foot = document.getElementById('sb-user');
-  if (foot && S.username) foot.textContent = `👤 ${S.username}`;
+  if (foot) foot.textContent = `👤 ${S.displayName || S.email}`;
 });
 
 fetchDash();

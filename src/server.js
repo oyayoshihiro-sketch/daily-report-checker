@@ -1,11 +1,18 @@
 const express = require('express');
 const path = require('path');
 const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
 const db = require('./db');
 const cfg = require('./config');
 const { runCheckForDate, todayJst } = require('./checker');
 const { syncChannelMembers } = require('./members');
 const { reloadSummaryCron } = require('./scheduler');
+const { sendInvitation } = require('./mailer');
+
+const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+const COOKIE_NAME = 'dr_session';
+const TOKEN_TTL = '7d';
+const APP_URL = process.env.APP_URL || 'http://localhost:3001';
 
 // ── パスワードハッシュ ────────────────────────────────────────────────────────
 
@@ -23,50 +30,58 @@ function verifyPassword(password, stored) {
   } catch { return false; }
 }
 
-// ── 初期管理者シード（環境変数 → DB） ────────────────────────────────────────
+// ── Cookie ───────────────────────────────────────────────────────────────────
 
-function seedInitialAdmin() {
-  const user = process.env.DASHBOARD_USER;
-  const pass = process.env.DASHBOARD_PASS;
-  if (!user || !pass) return;
-  if (db.getAllDashboardUsers().length > 0) return; // 既にユーザーがいれば何もしない
-  db.createDashboardUser(user, hashPassword(pass), 'admin');
-  console.log(`[auth] Initial admin created: ${user}`);
+function parseCookies(req) {
+  const cookies = {};
+  (req.headers.cookie || '').split(';').forEach(pair => {
+    const idx = pair.indexOf('=');
+    if (idx < 0) return;
+    cookies[pair.slice(0, idx).trim()] = decodeURIComponent(pair.slice(idx + 1).trim());
+  });
+  return cookies;
+}
+
+function setSessionCookie(res, payload) {
+  const token = jwt.sign(payload, SESSION_SECRET, { expiresIn: TOKEN_TTL });
+  const secure = process.env.NODE_ENV === 'production';
+  res.setHeader('Set-Cookie',
+    `${COOKIE_NAME}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${7 * 86400}${secure ? '; Secure' : ''}`
+  );
+  return token;
+}
+
+function clearSessionCookie(res) {
+  res.setHeader('Set-Cookie', `${COOKIE_NAME}=; HttpOnly; Path=/; Max-Age=0`);
 }
 
 // ── 認証ミドルウェア ──────────────────────────────────────────────────────────
 
-function basicAuth(req, res, next) {
-  const users = db.getAllDashboardUsers();
-  if (users.length === 0) { req.role = 'admin'; return next(); } // ユーザー未設定時はスルー
-
-  const auth = req.headers.authorization;
-  if (auth?.startsWith('Basic ')) {
-    // パスワードに':'が含まれる場合も正しく処理
-    const decoded  = Buffer.from(auth.slice(6), 'base64').toString();
-    const colonIdx = decoded.indexOf(':');
-    const u = decoded.slice(0, colonIdx);
-    const p = decoded.slice(colonIdx + 1);
-
-    // DB認証
-    const user = db.getDashboardUser(u);
-    if (user && verifyPassword(p, user.password_hash)) {
-      req.role = user.role;
-      req.authUser = { id: user.id, username: user.username, role: user.role };
-      return next();
-    }
-
-    // 環境変数フォールバック（緊急ログイン用）
-    const adminUser = process.env.DASHBOARD_USER;
-    const adminPass = process.env.DASHBOARD_PASS;
-    if (adminUser && adminPass && u === adminUser && p === adminPass) {
-      req.role = 'admin';
-      req.authUser = { id: 0, username: adminUser, role: 'admin' };
-      return next();
-    }
+function requireAuth(req, res, next) {
+  const token = parseCookies(req)[COOKIE_NAME];
+  if (!token) return res.redirect('/login.html');
+  try {
+    req.user = jwt.verify(token, SESSION_SECRET);
+    req.role = req.user.role;
+    req.authUser = req.user;
+    next();
+  } catch {
+    clearSessionCookie(res);
+    res.redirect('/login.html');
   }
-  res.set('WWW-Authenticate', 'Basic realm="日報チェッカー"');
-  res.status(401).send('認証が必要です');
+}
+
+function requireAuthApi(req, res, next) {
+  const token = parseCookies(req)[COOKIE_NAME];
+  if (!token) return res.status(401).json({ error: '認証が必要です' });
+  try {
+    req.user = jwt.verify(token, SESSION_SECRET);
+    req.role = req.user.role;
+    req.authUser = req.user;
+    next();
+  } catch {
+    res.status(401).json({ error: 'セッションが切れました' });
+  }
 }
 
 function requireAdmin(req, res, next) {
@@ -74,17 +89,88 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+// ── 初期管理者シード ──────────────────────────────────────────────────────────
+
+function seedInitialAdmin() {
+  if (db.getAllDashboardUsers().length > 0) return;
+  const email = process.env.ADMIN_EMAIL || process.env.DASHBOARD_USER;
+  const pass  = process.env.ADMIN_PASSWORD || process.env.DASHBOARD_PASS;
+  if (!email || !pass) return;
+  db.createDashboardUser(email, hashPassword(pass), 'admin', 'Admin');
+  console.log(`[auth] Initial admin created: ${email}`);
+}
+
 function createServer() {
   seedInitialAdmin();
 
   const server = express();
-  server.use(basicAuth);
   server.use(express.json());
+
+  // 静的ファイル（login.html, invite.html は認証不要）
   server.use(express.static(path.join(__dirname, '..', 'public')));
+
+  // ── 認証 ─────────────────────────────────────────────────────────────────
+  server.post('/auth/login', async (req, res) => {
+    const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ ok: false, error: 'メールアドレスとパスワードを入力してください' });
+
+    const user = db.getDashboardUser(email);
+    if (!user || !user.password_hash || !verifyPassword(password, user.password_hash)) {
+      return res.status(401).json({ ok: false, error: 'メールアドレスまたはパスワードが正しくありません' });
+    }
+
+    setSessionCookie(res, { id: user.id, email: user.email, role: user.role, displayName: user.display_name });
+    res.json({ ok: true, role: user.role });
+  });
+
+  server.get('/auth/logout', (req, res) => {
+    clearSessionCookie(res);
+    res.redirect('/login.html');
+  });
+
+  // ── 招待承認（認証不要） ─────────────────────────────────────────────────
+  server.get('/api/invitations/verify', (req, res) => {
+    const { token } = req.query;
+    if (!token) return res.status(400).json({ ok: false, error: 'トークンが必要です' });
+    const inv = db.getInvitationByToken(token);
+    if (!inv) return res.status(404).json({ ok: false, error: '無効な招待リンクです' });
+    if (new Date(inv.expires_at) < new Date()) return res.status(410).json({ ok: false, error: '招待リンクの有効期限が切れています' });
+    res.json({ ok: true, email: inv.email, role: inv.role });
+  });
+
+  server.post('/api/invitations/accept', async (req, res) => {
+    const { token, password } = req.body;
+    if (!token || !password) return res.status(400).json({ ok: false, error: 'トークンとパスワードが必要です' });
+    if (password.length < 8) return res.status(400).json({ ok: false, error: 'パスワードは8文字以上で設定してください' });
+
+    const inv = db.getInvitationByToken(token);
+    if (!inv) return res.status(404).json({ ok: false, error: '無効な招待リンクです' });
+    if (new Date(inv.expires_at) < new Date()) return res.status(410).json({ ok: false, error: '招待リンクの有効期限が切れています' });
+
+    try {
+      const existing = db.getDashboardUser(inv.email);
+      if (existing) {
+        // 既存ユーザーのパスワードを更新
+        db.updateDashboardUser(existing.id, { passwordHash: hashPassword(password) });
+        db.deleteInvitation(inv.id);
+        setSessionCookie(res, { id: existing.id, email: existing.email, role: existing.role, displayName: existing.display_name });
+      } else {
+        const result = db.createDashboardUser(inv.email, hashPassword(password), inv.role);
+        db.deleteInvitation(inv.id);
+        setSessionCookie(res, { id: result.lastInsertRowid, email: inv.email, role: inv.role, displayName: null });
+      }
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // 以降のAPIは全て認証必須
+  server.use('/api', requireAuthApi);
 
   // ── 自分の情報 ───────────────────────────────────────────────────────────
   server.get('/api/me', (req, res) => {
-    res.json({ role: req.role || 'admin', username: req.authUser?.username });
+    res.json({ role: req.user.role, email: req.user.email, displayName: req.user.displayName });
   });
 
   // ── Dashboard ────────────────────────────────────────────────────────────
@@ -100,14 +186,12 @@ function createServer() {
       const enriched = allMembers.map(member => {
         const check = checkMap[member.user_id] || null;
         const report = check?.posted ? db.getReport(member.user_id, date) : null;
-
         let group = null;
         if (member.group_id && groupMap[member.group_id]) {
           const g = groupMap[member.group_id];
           const parent = g.parent_id ? groupMap[g.parent_id] : null;
           group = { id: g.id, name: g.name, parent: parent ? { id: parent.id, name: parent.name } : null };
         }
-
         return {
           user: { user_id: member.user_id, display_name: member.display_name, real_name: member.real_name, group },
           check: check ? {
@@ -120,9 +204,9 @@ function createServer() {
         };
       });
 
-      const posted = enriched.filter(m => m.check?.posted).length;
-      const missing = enriched.length - posted;
-      const flagged = enriched.filter(m => (m.check?.flag_count ?? 0) > 0).length;
+      const posted   = enriched.filter(m => m.check?.posted).length;
+      const missing  = enriched.length - posted;
+      const flagged  = enriched.filter(m => (m.check?.flag_count ?? 0) > 0).length;
       const critical = enriched.filter(m => (m.check?.flag_count ?? 0) >= 3).length;
 
       const topGroups = allGroups.filter(g => !g.parent_id);
@@ -131,13 +215,8 @@ function createServer() {
           id: child.id, name: child.name,
           members: enriched.filter(m => m.user.group?.id === child.id),
         }));
-        return {
-          id: top.id, name: top.name, children,
-          direct_members: enriched.filter(m => m.user.group?.id === top.id),
-        };
+        return { id: top.id, name: top.name, children, direct_members: enriched.filter(m => m.user.group?.id === top.id) };
       });
-
-      const ungrouped = enriched.filter(m => !m.user.group);
 
       res.json({
         date,
@@ -151,7 +230,7 @@ function createServer() {
         stats: { total: enriched.length, posted, missing, flagged, critical },
         members: enriched,
         group_tree: groupTree,
-        ungrouped,
+        ungrouped: enriched.filter(m => !m.user.group),
       });
     } catch (e) {
       console.error('/api/dashboard error:', e);
@@ -171,9 +250,7 @@ function createServer() {
   });
 
   // ── Config ───────────────────────────────────────────────────────────────
-  server.get('/api/config', (req, res) => {
-    res.json(db.getAllConfigRows());
-  });
+  server.get('/api/config', (req, res) => res.json(db.getAllConfigRows()));
 
   server.patch('/api/config/:key', requireAdmin, (req, res) => {
     const { key } = req.params;
@@ -190,16 +267,15 @@ function createServer() {
   // ── Weekly ───────────────────────────────────────────────────────────────
   server.get('/api/weekly', (req, res) => {
     try {
-      const date   = req.query.date || todayJst();
-      const today  = todayJst();
-      const days   = weekDays(date);
+      const date  = req.query.date || todayJst();
+      const today = todayJst();
+      const days  = weekDays(date);
       const allGroups  = db.getAllGroups();
       const allMembers = db.getActiveMembers();
       const groupMap   = Object.fromEntries(allGroups.map(g => [g.id, g]));
 
       const reports = db.getReportsForDateRange(days[0], days[6]);
       const checks  = db.getChecksForDateRange(days[0], days[6]);
-
       const rMap = {};
       for (const r of reports) rMap[`${r.user_id}:${r.report_date}`] = r;
       const cMap = {};
@@ -212,59 +288,44 @@ function createServer() {
           const parent = g.parent_id ? groupMap[g.parent_id] : null;
           group = { id: g.id, name: g.name, parent: parent ? { id: parent.id, name: parent.name } : null };
         }
-
         const dayData = {};
         for (const day of days) {
           const report = rMap[`${member.user_id}:${day}`] || null;
           const check  = cMap[`${member.user_id}:${day}`] || null;
-          const posted = !!(report || check?.posted);
           dayData[day] = {
-            posted,
-            checked:         !!check,
+            posted: !!(report || check?.posted),
+            checked: !!check,
             flag_count:      check?.flag_count      ?? 0,
             late_night_flag: check?.late_night_flag  ?? 0,
             sentiment_flag:  check?.sentiment_flag   ?? 0,
             volume_flag:     check?.volume_flag      ?? 0,
-            posted_at:       report?.posted_at || null,
-            char_count:      report?.char_count ?? null,
-            is_future:       day > today,
-            is_weekend:      isWeekend(day),
+            posted_at:  report?.posted_at || null,
+            char_count: report?.char_count ?? null,
+            is_future:  day > today,
+            is_weekend: isWeekend(day),
           };
         }
-
-        return {
-          user: {
-            user_id: member.user_id, display_name: member.display_name,
-            real_name: member.real_name, group, is_active: member.is_active,
-          },
-          days: dayData,
-        };
+        return { user: { user_id: member.user_id, display_name: member.display_name, real_name: member.real_name, group, is_active: member.is_active }, days: dayData };
       });
 
       const topGroups = allGroups.filter(g => !g.parent_id);
       const groupTree = topGroups.map(top => ({
         id: top.id, name: top.name,
-        children: allGroups.filter(g => g.parent_id === top.id).map(c => ({
-          id: c.id, name: c.name,
-          members: enriched.filter(m => m.user.group?.id === c.id),
-        })),
+        children: allGroups.filter(g => g.parent_id === top.id).map(c => ({ id: c.id, name: c.name, members: enriched.filter(m => m.user.group?.id === c.id) })),
         direct_members: enriched.filter(m => m.user.group?.id === top.id),
       }));
-      const ungrouped = enriched.filter(m => !m.user.group);
 
       let totalExpected = 0, totalPosted = 0, totalFlagged = 0;
-      for (const m of enriched) {
-        for (const day of days) {
-          const d = m.days[day];
-          if (d.is_future || d.is_weekend) continue;
-          totalExpected++;
-          if (d.posted) { totalPosted++; if (d.flag_count > 0) totalFlagged++; }
-        }
+      for (const m of enriched) for (const day of days) {
+        const d = m.days[day];
+        if (d.is_future || d.is_weekend) continue;
+        totalExpected++;
+        if (d.posted) { totalPosted++; if (d.flag_count > 0) totalFlagged++; }
       }
 
       res.json({
         week_start: days[0], week_end: days[6], days, today,
-        group_tree: groupTree, ungrouped,
+        group_tree: groupTree, ungrouped: enriched.filter(m => !m.user.group),
         weekly_stats: { total_expected: totalExpected, total_posted: totalPosted, total_flagged: totalFlagged },
       });
     } catch (e) {
@@ -277,11 +338,7 @@ function createServer() {
   server.get('/api/members', (req, res) => {
     const allGroups = db.getAllGroups();
     const groupMap  = Object.fromEntries(allGroups.map(g => [g.id, g]));
-    const members   = db.getAllMembersRaw().map(m => ({
-      ...m,
-      group: m.group_id && groupMap[m.group_id] ? groupMap[m.group_id] : null,
-    }));
-    res.json(members);
+    res.json(db.getAllMembersRaw().map(m => ({ ...m, group: m.group_id && groupMap[m.group_id] ? groupMap[m.group_id] : null })));
   });
 
   server.patch('/api/members/:userId', requireAdmin, (req, res) => {
@@ -307,7 +364,7 @@ function createServer() {
 
   // ── Groups ───────────────────────────────────────────────────────────────
   server.get('/api/groups', (req, res) => {
-    const allGroups = db.getAllGroups();
+    const allGroups  = db.getAllGroups();
     const allMembers = db.getActiveMembers();
     const countByGroup = {};
     for (const m of allMembers) {
@@ -321,24 +378,19 @@ function createServer() {
     if (!name) return res.status(400).json({ ok: false, error: 'name is required' });
     if (parent_id) {
       const parent = db.getGroup(parent_id);
-      if (parent?.parent_id) {
-        return res.status(400).json({ ok: false, error: '階層は2段まで（サブグループの下にはグループを作れません）' });
-      }
+      if (parent?.parent_id) return res.status(400).json({ ok: false, error: '階層は2段まで' });
     }
     try {
       const result = db.createGroup(name, parent_id || null);
       res.json({ ok: true, id: result.lastInsertRowid });
     } catch (e) {
-      if (e.message.includes('UNIQUE')) {
-        return res.status(400).json({ ok: false, error: `グループ名 "${name}" は既に存在します` });
-      }
+      if (e.message.includes('UNIQUE')) return res.status(400).json({ ok: false, error: `グループ名 "${name}" は既に存在します` });
       res.status(500).json({ ok: false, error: e.message });
     }
   });
 
   server.delete('/api/groups/:id', requireAdmin, (req, res) => {
-    const id = parseInt(req.params.id, 10);
-    db.deleteGroup(id);
+    db.deleteGroup(parseInt(req.params.id, 10));
     res.json({ ok: true });
   });
 
@@ -347,35 +399,16 @@ function createServer() {
     res.json(db.getAllDashboardUsers());
   });
 
-  server.post('/api/users', requireAdmin, (req, res) => {
-    const { username, password, role } = req.body;
-    if (!username || !password) return res.status(400).json({ ok: false, error: 'username と password は必須です' });
-    if (!['admin', 'viewer'].includes(role)) return res.status(400).json({ ok: false, error: 'role は admin または viewer です' });
-    if (db.getDashboardUser(username)) return res.status(400).json({ ok: false, error: `"${username}" は既に存在します` });
-    try {
-      const result = db.createDashboardUser(username, hashPassword(password), role);
-      res.json({ ok: true, id: result.lastInsertRowid });
-    } catch (e) {
-      res.status(500).json({ ok: false, error: e.message });
-    }
-  });
-
   server.patch('/api/users/:id', requireAdmin, (req, res) => {
     const id = parseInt(req.params.id, 10);
     const { role, password } = req.body;
-
-    // 自分自身のroleをadmin→viewerに変更不可
-    if (role && role !== 'admin' && req.authUser?.id === id) {
+    if (role && role !== 'admin' && req.authUser?.id === id)
       return res.status(400).json({ ok: false, error: '自分自身の権限は変更できません' });
-    }
-    // 最後の管理者の権限は変更不可
     if (role === 'viewer') {
       const target = db.getDashboardUserById(id);
-      if (target?.role === 'admin' && db.countAdminUsers() <= 1) {
+      if (target?.role === 'admin' && db.countAdminUsers() <= 1)
         return res.status(400).json({ ok: false, error: '管理者が1名のため権限を変更できません' });
-      }
     }
-
     const updates = {};
     if (role) updates.role = role;
     if (password) updates.passwordHash = hashPassword(password);
@@ -385,29 +418,52 @@ function createServer() {
 
   server.delete('/api/users/:id', requireAdmin, (req, res) => {
     const id = parseInt(req.params.id, 10);
-    if (req.authUser?.id === id) {
-      return res.status(400).json({ ok: false, error: '自分自身は削除できません' });
-    }
+    if (req.authUser?.id === id) return res.status(400).json({ ok: false, error: '自分自身は削除できません' });
     const target = db.getDashboardUserById(id);
-    if (target?.role === 'admin' && db.countAdminUsers() <= 1) {
+    if (target?.role === 'admin' && db.countAdminUsers() <= 1)
       return res.status(400).json({ ok: false, error: '管理者が1名のため削除できません' });
-    }
     db.deleteDashboardUser(id);
+    res.json({ ok: true });
+  });
+
+  // ── Invitations ───────────────────────────────────────────────────────────
+  server.get('/api/invitations', requireAdmin, (req, res) => {
+    res.json(db.getAllInvitations());
+  });
+
+  server.post('/api/invitations', requireAdmin, async (req, res) => {
+    const { email, role } = req.body;
+    if (!email) return res.status(400).json({ ok: false, error: 'メールアドレスが必要です' });
+    if (!['admin', 'viewer'].includes(role)) return res.status(400).json({ ok: false, error: 'role は admin または viewer です' });
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    db.createInvitation(email, role, token, req.authUser.email, expiresAt);
+
+    const inviteUrl = `${APP_URL}/invite.html?token=${token}`;
+    try {
+      await sendInvitation({ to: email, inviterName: req.authUser.displayName || req.authUser.email, inviteUrl, role });
+      res.json({ ok: true });
+    } catch (e) {
+      console.error('[invite] email error:', e.message);
+      res.json({ ok: true, warning: 'メール送信に失敗しました。URLを直接共有してください。', inviteUrl });
+    }
+  });
+
+  server.delete('/api/invitations/:id', requireAdmin, (req, res) => {
+    db.deleteInvitation(parseInt(req.params.id, 10));
     res.json({ ok: true });
   });
 
   return server;
 }
 
-// 指定日を含む週の月〜日（ISO日付配列）
 function weekDays(dateStr) {
-  const d   = new Date(dateStr + 'T00:00:00Z');
+  const d = new Date(dateStr + 'T00:00:00Z');
   const dow = d.getUTCDay();
   const offset = dow === 0 ? 6 : dow - 1;
   const mon = new Date(d.getTime() - offset * 86400000);
-  return Array.from({ length: 7 }, (_, i) =>
-    new Date(mon.getTime() + i * 86400000).toISOString().slice(0, 10)
-  );
+  return Array.from({ length: 7 }, (_, i) => new Date(mon.getTime() + i * 86400000).toISOString().slice(0, 10));
 }
 
 function isWeekend(dateStr) {

@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ログイン — 日報チェッカー</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+               "Hiragino Sans", "Yu Gothic UI", Meiryo, sans-serif;
+  font-size: 14px; line-height: 1.5;
+  background: #f1f5f9; color: #0f172a;
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+}
+.card {
+  background: #fff; border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(0,0,0,.10), 0 1px 4px rgba(0,0,0,.06);
+  width: 100%; max-width: 400px; padding: 40px 36px;
+}
+.logo { display: flex; align-items: center; gap: 10px; margin-bottom: 30px; justify-content: center; }
+.logo-ico { font-size: 28px; }
+.logo-txt { font-size: 20px; font-weight: 700; color: #0f172a; }
+h1 { font-size: 17px; font-weight: 600; color: #334155; margin-bottom: 24px; text-align: center; }
+.field { margin-bottom: 16px; }
+label { display: block; font-size: 12.5px; font-weight: 600; color: #475569;
+        margin-bottom: 6px; letter-spacing: .02em; }
+input {
+  width: 100%; padding: 10px 13px; border: 1px solid #e2e8f0; border-radius: 7px;
+  font-size: 14px; color: #0f172a; background: #fff; outline: none;
+  transition: border-color .15s; font-family: inherit;
+}
+input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,.12); }
+input::placeholder { color: #94a3b8; }
+.btn {
+  width: 100%; padding: 11px; background: #3b82f6; color: #fff; border: none;
+  border-radius: 7px; font-size: 14.5px; font-weight: 600; cursor: pointer;
+  transition: background .15s; font-family: inherit; margin-top: 8px;
+}
+.btn:hover:not(:disabled) { background: #2563eb; }
+.btn:disabled { opacity: .6; cursor: not-allowed; }
+.err {
+  background: #fef2f2; border: 1px solid #fca5a5; border-radius: 7px;
+  color: #dc2626; font-size: 13px; padding: 10px 13px; margin-bottom: 16px;
+  display: none;
+}
+.err.on { display: block; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">
+    <span class="logo-ico">📊</span>
+    <span class="logo-txt">日報チェッカー</span>
+  </div>
+  <h1>ダッシュボードにログイン</h1>
+  <div id="err" class="err"></div>
+  <form id="form" onsubmit="doLogin(event)">
+    <div class="field">
+      <label for="email">メールアドレス</label>
+      <input id="email" type="email" placeholder="you@example.com" autocomplete="email" required>
+    </div>
+    <div class="field">
+      <label for="pass">パスワード</label>
+      <input id="pass" type="password" placeholder="••••••••" autocomplete="current-password" required>
+    </div>
+    <button class="btn" id="btn" type="submit">ログイン</button>
+  </form>
+</div>
+<script>
+async function doLogin(e) {
+  e.preventDefault();
+  const btn = document.getElementById('btn');
+  const err = document.getElementById('err');
+  err.classList.remove('on');
+  btn.disabled = true;
+  btn.textContent = 'ログイン中...';
+  try {
+    const res = await fetch('/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email:    document.getElementById('email').value,
+        password: document.getElementById('pass').value,
+      }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      window.location.href = '/';
+    } else {
+      err.textContent = data.error || 'ログインに失敗しました';
+      err.classList.add('on');
+    }
+  } catch {
+    err.textContent = 'サーバーに接続できませんでした';
+    err.classList.add('on');
+  }
+  btn.disabled = false;
+  btn.textContent = 'ログイン';
+}
+</script>
+</body>
+</html>

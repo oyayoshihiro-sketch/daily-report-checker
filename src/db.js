@@ -89,12 +89,47 @@ function initTables() {
     -- ダッシュボードユーザー
     CREATE TABLE IF NOT EXISTS dashboard_users (
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
-      username      TEXT    NOT NULL UNIQUE,
-      password_hash TEXT    NOT NULL,
-      role          TEXT    NOT NULL DEFAULT 'viewer', -- 'admin' | 'viewer'
+      email         TEXT    NOT NULL UNIQUE,
+      password_hash TEXT,   -- NULL = 招待承認待ち
+      role          TEXT    NOT NULL DEFAULT 'viewer',
+      display_name  TEXT,
       created_at    TEXT    NOT NULL DEFAULT (datetime('now'))
     );
+
+    -- 招待トークン
+    CREATE TABLE IF NOT EXISTS invitations (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      email       TEXT    NOT NULL,
+      role        TEXT    NOT NULL DEFAULT 'viewer',
+      token       TEXT    NOT NULL UNIQUE,
+      invited_by  TEXT,
+      expires_at  TEXT    NOT NULL,
+      created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+    );
   `);
+
+  // 旧スキーマ（username列）からの移行
+  try {
+    const cols = _db.prepare('PRAGMA table_info(dashboard_users)').all().map(c => c.name);
+    if (cols.includes('username') && !cols.includes('email')) {
+      _db.exec(`
+        CREATE TABLE dashboard_users_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          email TEXT NOT NULL UNIQUE,
+          password_hash TEXT,
+          role TEXT NOT NULL DEFAULT 'viewer',
+          display_name TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        INSERT INTO dashboard_users_new (id, email, password_hash, role, created_at)
+          SELECT id, username, password_hash, role, created_at FROM dashboard_users;
+        DROP TABLE dashboard_users;
+        ALTER TABLE dashboard_users_new RENAME TO dashboard_users;
+      `);
+    }
+  } catch (e) {
+    console.error('[db] migration error:', e.message);
+  }
 }
 
 const DEFAULT_CONFIG = [
@@ -292,8 +327,8 @@ function getAllMembersRaw() {
 
 // ── dashboard_users ──────────────────────────────────────────────────────────
 
-function getDashboardUser(username) {
-  return getDb().prepare('SELECT * FROM dashboard_users WHERE username = ?').get(username);
+function getDashboardUser(email) {
+  return getDb().prepare('SELECT * FROM dashboard_users WHERE email = ?').get(email);
 }
 
 function getDashboardUserById(id) {
@@ -301,23 +336,18 @@ function getDashboardUserById(id) {
 }
 
 function getAllDashboardUsers() {
-  return getDb().prepare('SELECT id, username, role, created_at FROM dashboard_users ORDER BY created_at').all();
+  return getDb().prepare('SELECT id, email, display_name, role, created_at FROM dashboard_users ORDER BY created_at').all();
 }
 
-function createDashboardUser(username, passwordHash, role) {
-  return getDb().prepare('INSERT INTO dashboard_users (username, password_hash, role) VALUES (?, ?, ?)').run(username, passwordHash, role);
+function createDashboardUser(email, passwordHash, role, displayName) {
+  return getDb().prepare('INSERT INTO dashboard_users (email, password_hash, role, display_name) VALUES (?, ?, ?, ?)').run(email, passwordHash || null, role, displayName || null);
 }
 
-function updateDashboardUser(id, { role, passwordHash }) {
-  if (role !== undefined && passwordHash !== undefined) {
-    return getDb().prepare('UPDATE dashboard_users SET role = ?, password_hash = ? WHERE id = ?').run(role, passwordHash, id);
-  }
-  if (role !== undefined) {
-    return getDb().prepare('UPDATE dashboard_users SET role = ? WHERE id = ?').run(role, id);
-  }
-  if (passwordHash !== undefined) {
-    return getDb().prepare('UPDATE dashboard_users SET password_hash = ? WHERE id = ?').run(passwordHash, id);
-  }
+function updateDashboardUser(id, { role, passwordHash, displayName }) {
+  const db = getDb();
+  if (role !== undefined) db.prepare('UPDATE dashboard_users SET role = ? WHERE id = ?').run(role, id);
+  if (passwordHash !== undefined) db.prepare('UPDATE dashboard_users SET password_hash = ? WHERE id = ?').run(passwordHash, id);
+  if (displayName !== undefined) db.prepare('UPDATE dashboard_users SET display_name = ? WHERE id = ?').run(displayName, id);
 }
 
 function deleteDashboardUser(id) {
@@ -326,6 +356,30 @@ function deleteDashboardUser(id) {
 
 function countAdminUsers() {
   return getDb().prepare("SELECT COUNT(*) as cnt FROM dashboard_users WHERE role = 'admin'").get().cnt;
+}
+
+// ── invitations ──────────────────────────────────────────────────────────────
+
+function createInvitation(email, role, token, invitedBy, expiresAt) {
+  return getDb().prepare(
+    'INSERT OR REPLACE INTO invitations (email, role, token, invited_by, expires_at) VALUES (?, ?, ?, ?, ?)'
+  ).run(email, role, token, invitedBy || null, expiresAt);
+}
+
+function getInvitationByToken(token) {
+  return getDb().prepare('SELECT * FROM invitations WHERE token = ?').get(token);
+}
+
+function getAllInvitations() {
+  return getDb().prepare('SELECT * FROM invitations ORDER BY created_at DESC').all();
+}
+
+function deleteInvitation(id) {
+  return getDb().prepare('DELETE FROM invitations WHERE id = ?').run(id);
+}
+
+function deleteInvitationByEmail(email) {
+  return getDb().prepare('DELETE FROM invitations WHERE email = ?').run(email);
 }
 
 module.exports = {
@@ -338,4 +392,5 @@ module.exports = {
   getConfigRaw, setConfigRaw, getAllConfigRows,
   getDashboardUser, getDashboardUserById, getAllDashboardUsers,
   createDashboardUser, updateDashboardUser, deleteDashboardUser, countAdminUsers,
+  createInvitation, getInvitationByToken, getAllInvitations, deleteInvitation, deleteInvitationByEmail,
 };
