@@ -7,7 +7,7 @@ const cfg = require('./config');
 const { runCheckForDate, todayJst } = require('./checker');
 const { syncChannelMembers } = require('./members');
 const { reloadSummaryCron } = require('./scheduler');
-const { sendInvitation } = require('./mailer');
+const { sendInvitation, isSmtpConfigured } = require('./mailer');
 
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const COOKIE_NAME = 'dr_session';
@@ -441,6 +441,12 @@ function createServer() {
     db.createInvitation(email, role, token, req.authUser.email, expiresAt);
 
     const inviteUrl = `${APP_URL}/invite.html?token=${token}`;
+
+    // SMTP未設定なら即座にURLを返す（タイムアウト待ちなし）
+    if (!isSmtpConfigured()) {
+      return res.json({ ok: true, warning: 'メール送信が未設定です。URLを直接共有してください。', inviteUrl });
+    }
+
     try {
       await sendInvitation({ to: email, inviterName: req.authUser.displayName || req.authUser.email, inviteUrl, role });
       res.json({ ok: true });

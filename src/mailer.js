@@ -1,5 +1,9 @@
 const nodemailer = require('nodemailer');
 
+function isSmtpConfigured() {
+  return !!(process.env.SMTP_USER && process.env.SMTP_PASS);
+}
+
 function createTransport() {
   return nodemailer.createTransport({
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
@@ -13,6 +17,9 @@ function createTransport() {
 }
 
 async function sendInvitation({ to, inviterName, inviteUrl, role }) {
+  if (!isSmtpConfigured()) {
+    throw new Error('SMTP_NOT_CONFIGURED');
+  }
   const roleLabel = role === 'admin' ? '管理者' : '閲覧者';
   await createTransport().sendMail({
     from: `"日報チェッカー" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
@@ -41,4 +48,4 @@ async function sendInvitation({ to, inviterName, inviteUrl, role }) {
   });
 }
 
-module.exports = { sendInvitation };
+module.exports = { sendInvitation, isSmtpConfigured };
