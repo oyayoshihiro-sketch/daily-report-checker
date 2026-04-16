@@ -9,100 +9,126 @@
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
                "Hiragino Sans", "Yu Gothic UI", Meiryo, sans-serif;
-  font-size: 14px; line-height: 1.5;
-  background: #f1f5f9; color: #0f172a;
-  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  background: #f0fdf4;
+  min-height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+  position: relative; overflow: hidden;
 }
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background:
+    radial-gradient(ellipse 800px 600px at 20% 30%, rgba(34,197,94,.12) 0%, transparent 70%),
+    radial-gradient(ellipse 600px 400px at 80% 70%, rgba(16,185,129,.08) 0%, transparent 70%);
+  pointer-events: none;
+}
+.wrap { width: 100%; max-width: 440px; padding: 24px; position: relative; z-index: 1; }
 .card {
-  background: #fff; border-radius: 12px;
-  box-shadow: 0 4px 24px rgba(0,0,0,.10), 0 1px 4px rgba(0,0,0,.06);
-  width: 100%; max-width: 420px; padding: 40px 36px;
+  background: #fff; border-radius: 20px;
+  box-shadow: 0 8px 40px rgba(22,163,74,.10), 0 2px 8px rgba(0,0,0,.06);
+  overflow: hidden;
 }
-.logo { display: flex; align-items: center; gap: 10px; margin-bottom: 30px; justify-content: center; }
-.logo-ico { font-size: 28px; }
-.logo-txt { font-size: 20px; font-weight: 700; color: #0f172a; }
+.card-top {
+  background: linear-gradient(135deg, #16a34a 0%, #0d9488 100%);
+  padding: 28px 32px 24px; text-align: center; position: relative;
+}
+.card-top::after {
+  content: ''; position: absolute; bottom: -1px; left: 0; right: 0;
+  height: 20px; background: #fff; border-radius: 20px 20px 0 0;
+}
+.logo-icon { font-size: 32px; display: inline-block; margin-bottom: 8px; }
+.logo-text { color: rgba(255,255,255,.95); font-size: 18px; font-weight: 800; }
+.logo-sub  { color: rgba(255,255,255,.7); font-size: 12px; margin-top: 3px; }
+.card-body { padding: 8px 32px 32px; }
+h1 { font-size: 16px; font-weight: 700; color: #111827; margin-bottom: 18px; text-align: center; }
 .invite-info {
-  background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px;
-  padding: 14px 16px; margin-bottom: 24px; text-align: center;
+  background: linear-gradient(135deg, #f0fdf4, #dcfce7);
+  border: 1.5px solid #bbf7d0; border-radius: 12px;
+  padding: 14px 18px; margin-bottom: 22px; text-align: center;
 }
-.invite-email { font-size: 16px; font-weight: 700; color: #1d4ed8; margin-top: 4px; }
-.invite-role  { font-size: 12.5px; color: #3b82f6; margin-top: 4px; }
-h1 { font-size: 17px; font-weight: 600; color: #334155; margin-bottom: 20px; text-align: center; }
+.invite-info-lbl { font-size: 11px; font-weight: 700; color: #16a34a; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 6px; }
+.invite-email { font-size: 15px; font-weight: 700; color: #111827; }
+.invite-role { display: inline-block; margin-top: 6px; font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 100px; }
+.role-admin { background: #dcfce7; color: #166534; }
+.role-viewer { background: #f1f5f9; color: #475569; }
 .field { margin-bottom: 16px; }
-label { display: block; font-size: 12.5px; font-weight: 600; color: #475569;
-        margin-bottom: 6px; letter-spacing: .02em; }
+label { display: block; font-size: 12px; font-weight: 700; color: #374151; margin-bottom: 6px; letter-spacing: .04em; text-transform: uppercase; }
+.hint { font-size: 11.5px; color: #9ca3af; margin-top: 5px; }
 input {
-  width: 100%; padding: 10px 13px; border: 1px solid #e2e8f0; border-radius: 7px;
-  font-size: 14px; color: #0f172a; background: #fff; outline: none;
-  transition: border-color .15s; font-family: inherit;
+  width: 100%; padding: 11px 14px;
+  border: 1.5px solid #d1fae5; border-radius: 10px;
+  font-size: 14px; color: #111827; background: #f9fffe;
+  outline: none; transition: border-color .15s, box-shadow .15s; font-family: inherit;
 }
-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,.12); }
-input::placeholder { color: #94a3b8; }
-.hint { font-size: 11.5px; color: #94a3b8; margin-top: 5px; }
+input:focus { border-color: #22c55e; box-shadow: 0 0 0 3px rgba(34,197,94,.15); background: #fff; }
+input::placeholder { color: #9ca3af; }
 .btn {
-  width: 100%; padding: 11px; background: #3b82f6; color: #fff; border: none;
-  border-radius: 7px; font-size: 14.5px; font-weight: 600; cursor: pointer;
-  transition: background .15s; font-family: inherit; margin-top: 8px;
+  width: 100%; padding: 13px;
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  color: #fff; border: none; border-radius: 10px;
+  font-size: 15px; font-weight: 700; cursor: pointer;
+  transition: opacity .15s, transform .1s; font-family: inherit; margin-top: 6px;
+  box-shadow: 0 4px 14px rgba(22,163,74,.35);
 }
-.btn:hover:not(:disabled) { background: #2563eb; }
-.btn:disabled { opacity: .6; cursor: not-allowed; }
-.err {
-  background: #fef2f2; border: 1px solid #fca5a5; border-radius: 7px;
-  color: #dc2626; font-size: 13px; padding: 10px 13px; margin-bottom: 16px;
-  display: none;
-}
+.btn:hover:not(:disabled) { opacity: .9; transform: translateY(-1px); }
+.btn:disabled { opacity: .6; cursor: not-allowed; transform: none; }
+.err { background: #fef2f2; border: 1.5px solid #fca5a5; border-radius: 10px; color: #dc2626; font-size: 13px; padding: 10px 14px; margin-bottom: 16px; display: none; }
 .err.on { display: block; }
-.ok-state { text-align: center; display: none; }
-.ok-state.on { display: block; }
-.ok-ico { font-size: 48px; margin-bottom: 16px; }
-.ok-ttl { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
-.ok-sub { font-size: 13px; color: #64748b; margin-bottom: 24px; }
-#loading { text-align: center; padding: 20px; color: #64748b; }
+.state { text-align: center; display: none; padding: 10px 0 8px; }
+.state.on { display: block; }
+.state-ico { font-size: 52px; margin-bottom: 14px; }
+.state-ttl { font-size: 18px; font-weight: 800; margin-bottom: 8px; color: #111827; }
+.state-sub { font-size: 13px; color: #6b7280; }
+#loading { text-align: center; padding: 24px; color: #6b7280; font-size: 13px; }
 #main-form { display: none; }
 </style>
 </head>
 <body>
-<div class="card">
-  <div class="logo">
-    <span class="logo-ico">📊</span>
-    <span class="logo-txt">日報チェッカー</span>
-  </div>
-
-  <div id="loading">招待を確認中...</div>
-
-  <div id="main-form">
-    <h1>パスワードを設定してください</h1>
-    <div id="invite-info" class="invite-info">
-      <div style="font-size:12.5px;color:#475569">招待されたアカウント</div>
-      <div id="inv-email" class="invite-email"></div>
-      <div id="inv-role"  class="invite-role"></div>
+<div class="wrap">
+  <div class="card">
+    <div class="card-top">
+      <div class="logo-icon">🌱</div>
+      <div class="logo-text">日報チェッカー</div>
+      <div class="logo-sub">Daily Report Checker</div>
     </div>
-    <div id="err" class="err"></div>
-    <form id="form" onsubmit="doAccept(event)">
-      <div class="field">
-        <label for="pass">パスワード</label>
-        <input id="pass" type="password" placeholder="8文字以上" autocomplete="new-password" required minlength="8">
-        <div class="hint">8文字以上で設定してください</div>
-      </div>
-      <div class="field">
-        <label for="pass2">パスワード（確認）</label>
-        <input id="pass2" type="password" placeholder="もう一度入力" autocomplete="new-password" required minlength="8">
-      </div>
-      <button class="btn" id="btn" type="submit">設定してログイン</button>
-    </form>
-  </div>
+    <div class="card-body">
+      <div id="loading">招待を確認中...</div>
 
-  <div id="ok-state" class="ok-state">
-    <div class="ok-ico">✅</div>
-    <div class="ok-ttl">設定完了！</div>
-    <div class="ok-sub">ダッシュボードへ移動します...</div>
-  </div>
+      <div id="main-form">
+        <h1>パスワードを設定してください</h1>
+        <div id="invite-info" class="invite-info">
+          <div class="invite-info-lbl">招待されたアカウント</div>
+          <div id="inv-email" class="invite-email"></div>
+          <div id="inv-role"  class="invite-role"></div>
+        </div>
+        <div id="err" class="err"></div>
+        <form id="form" onsubmit="doAccept(event)">
+          <div class="field">
+            <label for="pass">パスワード</label>
+            <input id="pass" type="password" placeholder="8文字以上" autocomplete="new-password" required minlength="8">
+            <div class="hint">8文字以上で設定してください</div>
+          </div>
+          <div class="field">
+            <label for="pass2">パスワード（確認）</label>
+            <input id="pass2" type="password" placeholder="もう一度入力" autocomplete="new-password" required minlength="8">
+          </div>
+          <button class="btn" id="btn" type="submit">設定してログイン →</button>
+        </form>
+      </div>
 
-  <div id="ng-state" class="ok-state">
-    <div class="ok-ico">❌</div>
-    <div id="ng-msg" class="ok-ttl" style="color:#dc2626;font-size:15px"></div>
-    <div class="ok-sub" style="margin-top:8px">
-      <a href="/login.html" style="color:#3b82f6">ログインページへ戻る</a>
+      <div id="ok-state" class="state">
+        <div class="state-ico">✅</div>
+        <div class="state-ttl">設定完了！</div>
+        <div class="state-sub">ダッシュボードへ移動します...</div>
+      </div>
+
+      <div id="ng-state" class="state">
+        <div class="state-ico">🔗</div>
+        <div id="ng-msg" class="state-ttl" style="font-size:15px;color:#dc2626"></div>
+        <div class="state-sub" style="margin-top:10px">
+          <a href="/login.html" style="color:#16a34a;font-weight:600">ログインページへ戻る →</a>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -117,20 +143,18 @@ async function init() {
     const data = await res.json();
     if (!data.ok) return showError(data.error);
     document.getElementById('inv-email').textContent = data.email;
-    document.getElementById('inv-role').textContent  = data.role === 'admin' ? '管理者' : '閲覧者';
-    document.getElementById('loading').style.display = 'none';
-    document.getElementById('main-form').style.display = 'block';
-  } catch {
-    showError('サーバーに接続できませんでした');
-  }
+    const roleEl = document.getElementById('inv-role');
+    roleEl.textContent = data.role === 'admin' ? '管理者' : '閲覧者';
+    roleEl.className   = `invite-role ${data.role === 'admin' ? 'role-admin' : 'role-viewer'}`;
+    document.getElementById('loading').style.display    = 'none';
+    document.getElementById('main-form').style.display  = 'block';
+  } catch { showError('サーバーに接続できませんでした'); }
 }
-
 function showError(msg) {
   document.getElementById('loading').style.display = 'none';
-  document.getElementById('ng-msg').textContent = msg;
+  document.getElementById('ng-msg').textContent    = msg;
   document.getElementById('ng-state').classList.add('on');
 }
-
 async function doAccept(e) {
   e.preventDefault();
   const btn  = document.getElementById('btn');
@@ -138,17 +162,11 @@ async function doAccept(e) {
   const pass  = document.getElementById('pass').value;
   const pass2 = document.getElementById('pass2').value;
   err.classList.remove('on');
-  if (pass !== pass2) {
-    err.textContent = 'パスワードが一致しません';
-    err.classList.add('on');
-    return;
-  }
-  btn.disabled = true;
-  btn.textContent = '設定中...';
+  if (pass !== pass2) { err.textContent = 'パスワードが一致しません'; err.classList.add('on'); return; }
+  btn.disabled = true; btn.textContent = '設定中...';
   try {
     const res  = await fetch('/api/invitations/accept', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token, password: pass }),
     });
     const data = await res.json();
@@ -159,17 +177,14 @@ async function doAccept(e) {
     } else {
       err.textContent = data.error || '設定に失敗しました';
       err.classList.add('on');
-      btn.disabled = false;
-      btn.textContent = '設定してログイン';
+      btn.disabled = false; btn.textContent = '設定してログイン →';
     }
   } catch {
     err.textContent = 'サーバーに接続できませんでした';
     err.classList.add('on');
-    btn.disabled = false;
-    btn.textContent = '設定してログイン';
+    btn.disabled = false; btn.textContent = '設定してログイン →';
   }
 }
-
 init();
 </script>
 </body>
