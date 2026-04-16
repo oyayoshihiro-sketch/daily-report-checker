@@ -42,11 +42,26 @@ function basicAuth(req, res, next) {
 
   const auth = req.headers.authorization;
   if (auth?.startsWith('Basic ')) {
-    const [u, p] = Buffer.from(auth.slice(6), 'base64').toString().split(':');
+    // パスワードに':'が含まれる場合も正しく処理
+    const decoded  = Buffer.from(auth.slice(6), 'base64').toString();
+    const colonIdx = decoded.indexOf(':');
+    const u = decoded.slice(0, colonIdx);
+    const p = decoded.slice(colonIdx + 1);
+
+    // DB認証
     const user = db.getDashboardUser(u);
     if (user && verifyPassword(p, user.password_hash)) {
       req.role = user.role;
       req.authUser = { id: user.id, username: user.username, role: user.role };
+      return next();
+    }
+
+    // 環境変数フォールバック（緊急ログイン用）
+    const adminUser = process.env.DASHBOARD_USER;
+    const adminPass = process.env.DASHBOARD_PASS;
+    if (adminUser && adminPass && u === adminUser && p === adminPass) {
+      req.role = 'admin';
+      req.authUser = { id: 0, username: adminUser, role: 'admin' };
       return next();
     }
   }
