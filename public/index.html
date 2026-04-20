@@ -185,26 +185,16 @@
 .inp:focus { border-color: var(--c-grn); box-shadow: 0 0 0 3px rgba(34,197,94,.12); }
 select.inp { cursor: pointer; }
 
-/* ── Stats ── */
-.stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-bottom: 24px; }
-.sc {
-  background: var(--c-sur); border: 1.5px solid var(--c-bdr);
-  border-radius: var(--r); padding: 20px 22px; box-shadow: var(--sh0);
-  position: relative; overflow: hidden; transition: box-shadow .15s;
-}
-.sc:hover { box-shadow: var(--sh1); }
-.sc::before { content:''; position:absolute; top:0;left:0;right:0; height:3px; background: var(--c-bdr); border-radius: var(--r) var(--r) 0 0; }
-.sc.s-g::before { background: linear-gradient(90deg, #22c55e, #10b981); }
-.sc.s-a::before { background: linear-gradient(90deg, #f59e0b, #f97316); }
-.sc.s-r::before { background: linear-gradient(90deg, #ef4444, #dc2626); }
-.sc.s-p::before { background: linear-gradient(90deg, #8b5cf6, #6366f1); }
-.sc-ico { font-size: 22px; margin-bottom: 12px; }
-.sc-val { font-size: 36px; font-weight: 900; line-height: 1; letter-spacing: -.03em; }
+/* ── Stats bar (compact) ── */
+.stats { display:flex; align-items:center; flex-wrap:wrap; background:var(--c-sur); border:1.5px solid var(--c-bdr); border-radius:var(--r); padding:8px 4px; margin-bottom:14px; box-shadow:var(--sh0); }
+.sc { display:flex; align-items:center; gap:6px; padding:5px 16px; border-right:1px solid var(--c-bdr2); }
+.sc:last-child { border-right:none; }
+.sc-ico { font-size:15px; line-height:1; }
+.sc-val { font-size:18px; font-weight:800; color:var(--c-t1); line-height:1; }
 .sc.s-g .sc-val { color: var(--c-pri); }
 .sc.s-a .sc-val { color: var(--c-amb); }
 .sc.s-r .sc-val { color: var(--c-red); }
-.sc.s-p .sc-val { color: #8b5cf6; }
-.sc-lbl { font-size: 11px; font-weight: 700; color: var(--c-t3); text-transform: uppercase; letter-spacing: .07em; margin-top: 6px; }
+.sc-lbl { font-size:11px; color:var(--c-t3); font-weight:600; }
 
 /* ── Section ── */
 .sec { margin-bottom: 28px; }
@@ -286,7 +276,24 @@ select.inp { cursor: pointer; }
 .mr.rf:hover { background: #fef9e0; }
 .mr.rc { background: #fff5f5; }
 .mr.rc:hover { background: #fef2f2; }
-.mr.rm { background: #fafafa; opacity: .7; }
+.mr.rm { background: #fff8f8; border-left: 3px solid var(--c-red); }
+.mr.rm:hover { background: #fff2f2; }
+
+/* Signal pill */
+.sig-pill { display:inline-flex;align-items:center;gap:3px;padding:3px 9px;border-radius:100px;font-size:11px;font-weight:700; }
+.sig-r { background:var(--c-redS); color:var(--c-red); }
+.sig-y { background:var(--c-ambS); color:#92400e; }
+.sig-g { background:var(--c-pri-s); color:var(--c-pri); }
+
+/* Summary text */
+.mr-summary { font-size:11px;color:var(--c-t3);margin-top:2px;font-style:italic; }
+.ac-summary { font-size:12.5px;color:var(--c-t2);font-style:italic;background:var(--c-bg);border-radius:8px;padding:8px 12px;margin-bottom:10px;border-left:3px solid var(--c-pri-m); }
+
+/* Missing grid */
+.missing-grid { display:flex;flex-wrap:wrap;gap:8px; }
+.missing-card { background:#fff5f5;border:1.5px solid var(--c-redBr);border-radius:10px;padding:10px 16px;min-width:110px; }
+.missing-card-name { font-weight:700;font-size:13px;color:var(--c-t1); }
+.missing-card-grp  { font-size:11px;color:var(--c-t3);margin-top:2px; }
 .th-row {
   display: grid; grid-template-columns: 20px 1fr 86px 118px 86px 78px 68px;
   align-items: center; gap: 10px; padding: 8px 18px;
@@ -331,14 +338,15 @@ select.inp { cursor: pointer; }
 .wk-tm-hd { padding: 7px 16px 7px 26px; background: #f7fef9; border-bottom: 1px solid var(--c-bdr2); font-weight: 700; font-size: 12.5px; color: var(--c-pri); }
 
 /* Week grid row */
-.wg-row { display: grid; grid-template-columns: 180px repeat(7, 1fr) 68px; border-bottom: 1px solid #f3faf5; align-items: stretch; }
+.wg-row { display: grid; grid-template-columns: 180px repeat(5, 1fr) 110px 68px; border-bottom: 1px solid #f3faf5; align-items: stretch; }
 .wg-row:last-child { border-bottom: none; }
 .wg-row:hover .wg-name { background: #fafff9; }
-.wg-hd-row { display: grid; grid-template-columns: 180px repeat(7, 1fr) 68px; border-bottom: 2px solid var(--c-bdr2); background: #f0fdf4; }
+.wg-hd-row { display: grid; grid-template-columns: 180px repeat(5, 1fr) 110px 68px; border-bottom: 2px solid var(--c-bdr2); background: #f0fdf4; }
 .wg-hd-cell { padding: 8px 4px; text-align: center; font-size: 11.5px; font-weight: 800; color: var(--c-pri); border-left: 1px solid var(--c-bdr2); }
 .wg-hd-cell:first-child { border-left: none; }
 .wg-hd-cell.today { color: #fff; background: var(--c-pri); }
-.wg-hd-cell.wkend { color: var(--c-t4); background: #fafafa; }
+.wg-weekly-cell { border-left: 2px solid var(--c-bdr2); padding: 6px 6px; display: flex; align-items: center; justify-content: center; background: #f7fef9; }
+.wg-weekly-hd { border-left: 2px solid var(--c-pri-m) !important; background: #dcfce7 !important; color: var(--c-pri) !important; font-size: 11px !important; }
 .wg-name { display: flex; align-items: center; gap: 8px; padding: 9px 14px; font-size: 13px; font-weight: 700; min-width: 0; }
 .wg-name-txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 .wg-cell { border-left: 1px solid var(--c-bdr2); padding: 5px 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
@@ -355,6 +363,30 @@ select.inp { cursor: pointer; }
 .cell-time { font-size: 12px; font-weight: 800; }
 .cell-flag { font-size: 10px; opacity: .85; margin-top: 1px; }
 .wg-toggle { border-left: 1px solid var(--c-bdr2); display: flex; align-items: center; justify-content: center; padding: 6px 4px; }
+
+/* ── Org score card ── */
+.org-card { background:var(--c-sur); border:1.5px solid var(--c-bdr); border-radius:var(--r); padding:16px 20px; margin-bottom:16px; box-shadow:var(--sh0); }
+.org-card-top { display:flex; align-items:center; gap:14px; margin-bottom:10px; }
+.org-card-sig { display:flex; align-items:center; gap:8px; }
+.org-card-label { font-size:11px; font-weight:700; color:var(--c-t3); text-transform:uppercase; letter-spacing:.05em; }
+.org-card-vals { display:flex; align-items:baseline; gap:16px; flex:1; }
+.org-score-big { font-size:26px; font-weight:800; }
+.org-rate-txt { font-size:14px; font-weight:700; color:var(--c-t2); }
+.org-summary-line { font-size:12.5px; color:var(--c-t2); padding-top:10px; border-top:1px solid var(--c-bdr2); font-style:italic; }
+/* Group mini-cards */
+.org-grp-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:10px; margin-bottom:16px; }
+.org-grp-card { background:var(--c-sur); border:1.5px solid var(--c-bdr); border-radius:10px; padding:12px 14px; box-shadow:var(--sh0); }
+.org-grp-child { border-style:dashed; background:#fafff9; }
+.org-grp-hd { display:flex; align-items:center; gap:7px; margin-bottom:8px; }
+.org-grp-name { font-size:12px; font-weight:700; color:var(--c-t1); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.org-grp-body { display:flex; align-items:baseline; gap:10px; margin-bottom:4px; }
+.org-grp-score { font-size:22px; font-weight:800; }
+.org-grp-rate { font-size:12px; color:var(--c-t3); font-weight:600; }
+.org-grp-sig { font-size:11px; color:var(--c-t3); }
+/* Weekly org row */
+.wg-org-row { display:grid; grid-template-columns:180px repeat(5,1fr) 110px 68px; border-bottom:1px solid var(--c-bdr2); background:#f0fdf4; }
+.wg-org-row.grp { background:#fafff9; }
+.wg-org-name { display:flex; align-items:center; gap:8px; padding:9px 14px; font-size:11.5px; font-weight:800; color:var(--c-pri); }
 
 /* ── Card ── */
 .card {
@@ -617,53 +649,250 @@ function renderDaily(tabs) {
   if (!S.dash) return bar + `<div class="empty"><div class="empty-ico">📭</div><div class="empty-ttl">データなし</div><p>「チェック実行」を押してください。</p></div>`;
 
   const { stats, config: cfg, group_tree, ungrouped, members } = S.dash;
-  const flagged = [...members].filter(m => (m.check?.flag_count??0) > 0)
-                               .sort((a,b) => (b.check?.flag_count??0) - (a.check?.flag_count??0));
+  const org_stats = calcOrgStatsFromDailyMs(members);
 
-  return bar + renderStats(stats) +
-    (flagged.length ? `<div class="sec">
-      <div class="sec-ttl">⚠️ 要注意メンバー <span class="cnt-badge">${flagged.length}</span></div>
-      ${flagged.map(m => renderAC(m, cfg)).join('')}
-    </div>` : '') +
-    renderDeptTree(group_tree, ungrouped, cfg);
+  // 未投稿
+  const missing = members.filter(m => !m.check || !m.check.posted);
+  // 要注意（赤→黄 順）
+  const alerts = members
+    .filter(m => m.check?.posted && (m.check?.signal === 'red' || m.check?.signal === 'yellow'))
+    .sort((a,b) => {
+      // 赤→黄の順、同一信号内は感情スコア昇順
+      const sigRank = s => s === 'red' ? 0 : 1;
+      const d = sigRank(a.check?.signal) - sigRank(b.check?.signal);
+      if (d !== 0) return d;
+      return (a.check?.sentiment_score ?? 0.5) - (b.check?.sentiment_score ?? 0.5);
+    });
+
+  const missingSection = missing.length ? `<div class="sec">
+    <div class="sec-ttl">📭 未投稿 <span class="cnt-badge" style="background:var(--c-t3)">${missing.length}名</span></div>
+    <div class="missing-grid">
+      ${missing.map(m => {
+        const name = m.user.display_name || m.user.real_name || m.user.user_id;
+        const grp  = m.user.group ? (m.user.group.parent ? `${m.user.group.parent.name} › ${m.user.group.name}` : m.user.group.name) : '';
+        return `<div class="missing-card">
+          <div class="missing-card-name">${name}</div>
+          ${grp ? `<div class="missing-card-grp">${grp}</div>` : ''}
+        </div>`;
+      }).join('')}
+    </div>
+  </div>` : '';
+
+  const alertSection = alerts.length ? `<div class="sec">
+    <div class="sec-ttl">⚠️ 要注意メンバー <span class="cnt-badge">${alerts.length}</span></div>
+    ${alerts.map(m => renderAC(m, cfg)).join('')}
+  </div>` : '';
+
+  return bar + renderOrgCard(org_stats) + renderGroupOrgSection(group_tree) + renderStats(stats) + missingSection + alertSection + renderDeptTree(group_tree, ungrouped, cfg);
 }
 
 function renderStats(s) {
+  const pct = s.total > 0 ? Math.round(s.posted / s.total * 100) : 0;
   return `<div class="stats">
-    <div class="sc"><div class="sc-ico">👥</div><div class="sc-val">${s.total}</div><div class="sc-lbl">監視対象</div></div>
-    <div class="sc s-g"><div class="sc-ico">✅</div><div class="sc-val">${s.posted}</div><div class="sc-lbl">投稿済み</div></div>
-    <div class="sc ${s.missing>0?'s-a':''}"><div class="sc-ico">⏳</div><div class="sc-val">${s.missing}</div><div class="sc-lbl">未投稿</div></div>
-    <div class="sc ${s.critical>0?'s-r':s.flagged>0?'s-a':'s-g'}">
-      <div class="sc-ico">${s.critical>0?'🔴':s.flagged>0?'🟡':'🟢'}</div>
-      <div class="sc-val">${s.flagged}</div>
-      <div class="sc-lbl">要注意 <span style="font-size:10px;font-weight:500">(重篤${s.critical})</span></div>
+    <div class="sc"><span class="sc-ico">👥</span><span class="sc-val">${s.total}</span><span class="sc-lbl">監視対象</span></div>
+    <div class="sc s-g"><span class="sc-ico">✅</span><span class="sc-val">${s.posted}</span><span class="sc-lbl">投稿済み ${pct}%</span></div>
+    <div class="sc ${s.missing>0?'s-r':''}"><span class="sc-ico">📭</span><span class="sc-val">${s.missing}</span><span class="sc-lbl">未投稿</span></div>
+    <div class="sc ${(s.redCount||0)>0?'s-r':''}"><span class="sc-ico">🔴</span><span class="sc-val">${s.redCount||0}</span><span class="sc-lbl">赤</span></div>
+    <div class="sc ${(s.yellowCount||0)>0?'s-a':''}"><span class="sc-ico">🟡</span><span class="sc-val">${s.yellowCount||0}</span><span class="sc-lbl">黄</span></div>
+    <div class="sc s-g"><span class="sc-ico">🟢</span><span class="sc-val">${s.greenCount||0}</span><span class="sc-lbl">青</span></div>
+  </div>`;
+}
+
+// ── 組織スコア計算ヘルパー ──
+// 投稿時刻スコア: 1.0=通常 / 0.5=22時台 or 遅延投稿 / 0.0=深夜(23〜翌5時)
+function memberTimeScore(lnf, lpf) {
+  if (lnf >= 2) return 0.0;
+  if (lnf === 1 || lpf) return 0.5;
+  return 1.0;
+}
+function scoreToSig(s) {
+  if (s == null) return null;
+  return s <= 0.35 ? 'red' : s < 0.60 ? 'yellow' : 'green';
+}
+function sigIcon(sig) { return sig === 'red' ? '🔴' : sig === 'yellow' ? '🟡' : sig === 'green' ? '🟢' : '—'; }
+function sigText(sig) { return sig === 'red' ? '要警戒' : sig === 'yellow' ? '要注意' : '良好'; }
+function sigCl(sig)   { return sig === 'red' ? 't-r'   : sig === 'yellow' ? 't-a'   : 't-g'; }
+
+// 日次: enriched members ({check}) から2軸の統計計算
+function calcOrgStatsFromDailyMs(ms) {
+  const posted = ms.filter(m => m.check?.posted);
+  // 感情スコア
+  const sentRaw  = posted.map(m => m.check?.sentiment_score).filter(s => s != null);
+  const sentScore = sentRaw.length ? sentRaw.reduce((a, b) => a + b, 0) / sentRaw.length : null;
+  const sentSig   = scoreToSig(sentScore);
+  // 投稿時刻スコア
+  const timeRaw  = posted.map(m => memberTimeScore(m.check?.late_night_flag ?? 0, m.check?.late_post_flag ?? 0));
+  const timeScore = timeRaw.length ? timeRaw.reduce((a, b) => a + b, 0) / timeRaw.length : null;
+  const timeSig   = scoreToSig(timeScore);
+  // 投稿率
+  const rate = ms.length ? posted.length / ms.length : 0;
+  const pct  = Math.round(rate * 100);
+  const summary = `投稿率${pct}%・感情スコア${sentScore != null ? sentScore.toFixed(2) + '（' + sigText(sentSig) + '）' : '—'}・時刻スコア${timeScore != null ? timeScore.toFixed(2) + '（' + sigText(timeSig) + '）' : '—'}`;
+  return { sentScore, sentSig, timeScore, timeSig, posting_rate: rate, summary };
+}
+
+// 週次: weekly members ({days}) から1日分の統計計算
+function calcDayStatsFromWkMs(members, day, td) {
+  if (day > td) return null;
+  const posted = members.filter(m => m.days[day]?.posted);
+  const sentRaw  = posted.map(m => m.days[day]?.sentiment_score).filter(s => s != null);
+  const sentScore = sentRaw.length ? sentRaw.reduce((a, b) => a + b, 0) / sentRaw.length : null;
+  const sentSig   = scoreToSig(sentScore);
+  const timeRaw  = posted.map(m => memberTimeScore(m.days[day]?.late_night_flag ?? 0, m.days[day]?.late_post_flag ?? 0));
+  const timeScore = timeRaw.length ? timeRaw.reduce((a, b) => a + b, 0) / timeRaw.length : null;
+  const timeSig   = scoreToSig(timeScore);
+  const rate = members.length ? posted.length / members.length : 0;
+  return { sentScore, sentSig, timeScore, timeSig, posting_rate: rate };
+}
+
+// ── 描画関数 ──
+function renderOrgSigBlock(label, score, sig) {
+  const pill = sig ? `<span class="sig-pill ${sig === 'red' ? 'sig-r' : sig === 'yellow' ? 'sig-y' : 'sig-g'}" style="font-size:11px;padding:2px 8px">${sigIcon(sig)} ${sigText(sig)}</span>` : '<span style="color:var(--c-t4)">—</span>';
+  const scoreStr = score != null ? `<span class="${sigCl(sig)}" style="font-size:20px;font-weight:800;margin-left:8px">${score.toFixed(2)}</span>` : '';
+  return `<div style="flex:1;min-width:120px">
+    <div style="font-size:10px;color:var(--c-t4);margin-bottom:5px">${label}</div>
+    <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">${pill}${scoreStr}</div>
+  </div>`;
+}
+
+function renderOrgCard(os, title = '全社コンディション') {
+  if (!os) return '';
+  const rateStr = Math.round((os.posting_rate || 0) * 100) + '%';
+  return `<div class="org-card">
+    <div class="org-card-label" style="margin-bottom:12px">${title}</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;margin-bottom:12px">
+      ${renderOrgSigBlock('😊 感情スコア', os.sentScore, os.sentSig)}
+      <div style="width:1px;background:var(--c-bdr2);align-self:stretch;margin:0 4px"></div>
+      ${renderOrgSigBlock('🕐 投稿時刻スコア', os.timeScore, os.timeSig)}
+      <div style="width:1px;background:var(--c-bdr2);align-self:stretch;margin:0 4px"></div>
+      <div style="flex:0 0 auto">
+        <div style="font-size:10px;color:var(--c-t4);margin-bottom:5px">📋 投稿率</div>
+        <div style="font-size:22px;font-weight:800;color:var(--c-t1)">${rateStr}</div>
+      </div>
     </div>
+    <div class="org-summary-line">${os.summary || ''}</div>
+  </div>`;
+}
+
+function renderOrgMiniCard(name, os, isChild) {
+  const rateStr = Math.round((os.posting_rate || 0) * 100) + '%';
+  const sentStr = os.sentScore != null ? os.sentScore.toFixed(2) : '—';
+  const timeStr = os.timeScore != null ? os.timeScore.toFixed(2) : '—';
+  return `<div class="org-grp-card${isChild ? ' org-grp-child' : ''}">
+    <div class="org-grp-hd"><div class="org-grp-name">${name}</div></div>
+    <div style="display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+      <div style="font-size:11px">
+        <div style="font-size:9px;color:var(--c-t4)">感情</div>
+        <span style="font-weight:800" class="${sigCl(os.sentSig)}">${sigIcon(os.sentSig)} ${sentStr}</span>
+      </div>
+      <div style="font-size:11px">
+        <div style="font-size:9px;color:var(--c-t4)">時刻</div>
+        <span style="font-weight:800" class="${sigCl(os.timeSig)}">${sigIcon(os.timeSig)} ${timeStr}</span>
+      </div>
+    </div>
+    <div class="org-grp-rate">投稿率 ${rateStr}</div>
+  </div>`;
+}
+
+function renderGroupOrgSection(groupTree) {
+  if (!groupTree?.length) return '';
+  const cards = [];
+  for (const top of groupTree) {
+    const topMs = [...(top.children||[]).flatMap(c => c.members||[]), ...(top.direct_members||[])];
+    if (!topMs.length) continue;
+    cards.push(renderOrgMiniCard(top.name, calcOrgStatsFromDailyMs(topMs), false));
+    for (const child of (top.children||[])) {
+      if (!child.members?.length) continue;
+      cards.push(renderOrgMiniCard(`└ ${child.name}`, calcOrgStatsFromDailyMs(child.members), true));
+    }
+  }
+  return cards.length ? `<div class="org-grp-grid">${cards.join('')}</div>` : '';
+}
+
+// 週次グリッドの組織行（全社 or グループ単位）
+function renderWkOrgRow(name, days, dayStatsFn, td, isGroup) {
+  const weekdays = days.filter(d => !isWkend(d));
+  const sigRow = (lbl, sig) =>
+    `<div style="display:flex;align-items:center;gap:3px;white-space:nowrap">
+      <span style="font-size:8.5px;color:var(--c-t4);min-width:18px">${lbl}</span>
+      <span style="font-size:13px;line-height:1">${sigIcon(sig)}</span>
+    </div>`;
+  const cells = weekdays.map(d => {
+    const os = dayStatsFn(d);
+    if (!os || d > td) return `<div class="wg-cell future"><div class="cell-pill cp-fut"></div></div>`;
+    const pct = Math.round((os.posting_rate || 0) * 100);
+    return `<div class="wg-cell">
+      <div style="padding:4px 6px;display:flex;flex-direction:column;gap:2px;align-items:flex-start">
+        ${sigRow('感情', os.sentSig)}
+        ${sigRow('時刻', os.timeSig)}
+        <div style="font-size:8.5px;color:var(--c-t4);margin-top:1px;padding-left:21px">投稿率${pct}%</div>
+      </div>
+    </div>`;
+  }).join('');
+  // 週合計: 感情・時刻それぞれ週平均
+  const validDays = weekdays.filter(d => d <= td);
+  const wkSentScores = validDays.map(d => dayStatsFn(d)?.sentScore).filter(s => s != null);
+  const wkSentScore  = wkSentScores.length ? wkSentScores.reduce((a,b)=>a+b,0)/wkSentScores.length : null;
+  const wkTimeScores = validDays.map(d => dayStatsFn(d)?.timeScore).filter(s => s != null);
+  const wkTimeScore  = wkTimeScores.length ? wkTimeScores.reduce((a,b)=>a+b,0)/wkTimeScores.length : null;
+  const wkRates = validDays.map(d => dayStatsFn(d)?.posting_rate).filter(r => r != null);
+  const avgRate = wkRates.length ? Math.round(wkRates.reduce((a,b)=>a+b,0)/wkRates.length*100) : null;
+  const wkCell = `<div class="wg-weekly-cell">
+    <div style="padding:4px 6px;display:flex;flex-direction:column;gap:2px;align-items:flex-start">
+      ${sigRow('感情', scoreToSig(wkSentScore))}
+      ${sigRow('時刻', scoreToSig(wkTimeScore))}
+      ${avgRate != null ? `<div style="font-size:8.5px;color:var(--c-t4);margin-top:1px;padding-left:21px">平均${avgRate}%</div>` : ''}
+    </div>
+  </div>`;
+  const rowCl   = isGroup ? 'wg-org-row grp' : 'wg-org-row';
+  const namePad = isGroup ? 'padding-left:24px;font-size:11px;font-weight:600' : '';
+  return `<div class="${rowCl}">
+    <div class="wg-org-name" style="${namePad}"><div>${name}</div></div>
+    ${cells}${wkCell}
+    <div class="wg-toggle"></div>
   </div>`;
 }
 
 function renderAC(m, cfg) {
   const { user, check, report } = m;
-  const name  = user.display_name || user.real_name || user.user_id;
-  const grp   = user.group ? (user.group.parent ? `${user.group.parent.name} › ${user.group.name}` : user.group.name) : '未分類';
-  const crit  = (check.flag_count??0) >= 3;
+  const name   = user.real_name || user.display_name || user.user_id;
+  const grp    = user.group ? (user.group.parent ? `${user.group.parent.name} › ${user.group.name}` : user.group.name) : '未分類';
+  const signal = check.signal || 'yellow';
   const chips = [
     check.late_night_flag ? `<span class="chip c-b">🌙 深夜</span>` : '',
     check.sentiment_flag  ? `<span class="chip c-r">😟 ネガティブ</span>` : '',
     check.volume_flag     ? `<span class="chip c-a">${check.volume_ratio<1?'📉':'📈'} 文量変化</span>` : '',
   ].filter(Boolean).join('');
-  const dets = [];
-  if (check.late_night_flag) dets.push(`<div class="det-box"><div class="det-lbl">🌙 投稿時刻</div><div class="det-val t-b">${fmtT(check.posted_at)}</div></div>`);
-  if (check.sentiment_flag)  dets.push(`<div class="det-box"><div class="det-lbl">😟 感情スコア</div><div class="det-val t-r">${(check.sentiment_score??0).toFixed(2)}<span style="font-size:11px;color:var(--c-t3)"> / 閾値${cfg.sentiment_threshold}</span></div></div>`);
-  if (check.volume_flag)     dets.push(`<div class="det-box"><div class="det-lbl">${check.volume_ratio<1?'📉':'📈'} 文量</div><div class="det-val t-a">${fmtP(check.volume_ratio)}<span style="font-size:11px;color:var(--c-t3)"> (${report?.char_count??'?'}字)</span></div></div>`);
-  return `<div class="ac ${crit?'':'warn'}">
+  const sigBadge = signal === 'red'
+    ? `<span class="sig-pill sig-r">🔴 赤信号</span>`
+    : `<span class="sig-pill sig-y">🟡 黄信号</span>`;
+
+  // 理由をスコア・フラグから直接構築（sentimentFlagに頼らない）
+  const sc = check.sentiment_score;
+  const reasonParts = [];
+  if (check.late_night_flag) reasonParts.push(`🌙 深夜投稿`);
+  if (sc !== null && sc !== undefined && sc < 0.60)
+    reasonParts.push(`😟 感情スコア ${sc.toFixed(2)}`);
+  if (check.volume_flag)
+    reasonParts.push(`${check.volume_ratio<1?'📉':'📈'} 文量 ${fmtP(check.volume_ratio)}`);
+  const reasonStr = reasonParts.join(' ・ ');
+  const summaryStr = check.sentiment_summary || '';
+
+  // 理由 + サマリーを常に表示（どちらかでもあれば出す）
+  const oneLiner = [
+    reasonStr ? `<span style="font-weight:700;color:var(--c-t1)">${reasonStr}</span>` : '',
+    summaryStr ? `<span style="color:var(--c-t2)">${reasonStr ? ' — ' : ''}${summaryStr}</span>` : '',
+  ].filter(Boolean).join('');
+
+  return `<div class="ac ${signal === 'red' ? '' : 'warn'}">
     <div class="ac-hd">
       <div class="ac-who">
-        <div class="dot ${crit?'d-r':'d-a'}" style="width:12px;height:12px"></div>
+        <div class="dot ${signal==='red'?'d-r':'d-a'}" style="width:12px;height:12px"></div>
         <div><div class="ac-name">${name}</div><div class="ac-grp">${grp}</div></div>
       </div>
-      <div class="ac-chips">${chips}</div>
+      <div class="ac-chips">${sigBadge} ${chips}</div>
     </div>
-    ${dets.length ? `<div class="ac-dets">${dets.join('')}</div>` : ''}
+    ${oneLiner ? `<div class="ac-summary">${oneLiner}</div>` : '<div class="ac-summary" style="color:var(--c-t4);font-size:11.5px">チェック実行でサマリーが生成されます</div>'}
   </div>`;
 }
 
@@ -681,13 +910,17 @@ function renderDeptBlock(dept, cfg) {
   let body = '';
   for (const child of (dept.children||[])) {
     if (!child.members?.length) continue;
-    const cp = child.members.filter(m=>m.check?.posted).length;
+    const sorted = sortBySignal(child.members);
+    const cp = sorted.filter(m=>m.check?.posted).length;
     body += `<div>
-      <div class="tm-hd"><span class="tm-hd-name">▸ ${child.name}</span><span class="tm-hd-stat">${cp}/${child.members.length}名</span></div>
-      ${renderTblHd()}${child.members.map(m=>renderMR(m,cfg)).join('')}
+      <div class="tm-hd"><span class="tm-hd-name">▸ ${child.name}</span><span class="tm-hd-stat">${cp}/${sorted.length}名</span></div>
+      ${renderTblHd()}${sorted.map(m=>renderMR(m,cfg)).join('')}
     </div>`;
   }
-  if ((dept.direct_members||[]).length) body += renderTblHd() + dept.direct_members.map(m=>renderMR(m,cfg)).join('');
+  if ((dept.direct_members||[]).length) {
+    const sorted = sortBySignal(dept.direct_members);
+    body += renderTblHd() + sorted.map(m=>renderMR(m,cfg)).join('');
+  }
   return `<div class="db">
     <div class="db-hd"><span class="db-hd-name">🏢 ${dept.name}</span><span class="db-hd-stat">${post}/${all.length}名投稿</span></div>
     ${body||'<div style="padding:14px 18px;color:var(--c-t4);font-size:13px">メンバーなし</div>'}
@@ -696,33 +929,64 @@ function renderDeptBlock(dept, cfg) {
 
 function renderTblHd() {
   return `<div class="th-row">
-    <div></div><div class="th">名前</div><div class="th">投稿時刻</div>
+    <div></div><div class="th">名前 / コンディション</div><div class="th">投稿時刻</div>
     <div class="th">感情スコア</div><div class="th">文量変化</div>
-    <div class="th th-r">状態</div><div class="th th-r">監視</div>
+    <div class="th th-r">信号</div><div class="th th-r">監視</div>
   </div>`;
+}
+
+function signalDot(sig) {
+  if (sig === 'red')    return 'd-r';
+  if (sig === 'yellow') return 'd-a';
+  if (sig === 'green')  return 'd-g';
+  return 'd-n';
+}
+function signalRow(sig) {
+  if (sig === 'red')    return 'rc';
+  if (sig === 'yellow') return 'rf';
+  return '';
+}
+function sortBySignal(arr) {
+  const rank = m => {
+    if (!m.check || !m.check.posted) return 0;
+    if (m.check.signal === 'red')    return 1;
+    if (m.check.signal === 'yellow') return 2;
+    return 3;
+  };
+  return [...arr].sort((a,b) => {
+    const d = rank(a) - rank(b);
+    if (d !== 0) return d;
+    // 同じ信号内は感情スコア昇順（低い=ネガティブ=上位）
+    const sa = a.check?.sentiment_score ?? 0.5;
+    const sb = b.check?.sentiment_score ?? 0.5;
+    return sa - sb;
+  });
 }
 
 function renderMR(m, cfg) {
   const { user, check, report } = m;
-  const name = user.display_name || user.real_name || user.user_id;
+  const name   = user.real_name || user.display_name || user.user_id;
   const monBtn = S.role === 'admin' ? `<button class="mon-btn mon-on" onclick="toggleMon('${user.user_id}',0)" title="監視停止">監視中</button>` : '';
 
   if (!check || !check.posted) {
     return `<div class="mr rm">
       <div class="dot d-n"></div>
-      <div><div class="mr-name t-3">${name}</div></div>
-      <div><span class="chip c-x">未投稿</span></div>
+      <div><div class="mr-name" style="color:var(--c-red)">${name}</div><div class="mr-summary">未投稿</div></div>
       <div>—</div><div>—</div><div>—</div>
+      <div class="mr-flags"><span class="sig-pill sig-r">📭 未投稿</span></div>
       <div style="display:flex;justify-content:flex-end">${monBtn}</div>
     </div>`;
   }
 
-  const fl  = check.flag_count ?? 0;
-  const row = fl >= 3 ? 'rc' : fl > 0 ? 'rf' : '';
-  const dot = fl >= 3 ? 'd-r' : fl > 0 ? 'd-a' : 'd-g';
-  const tHtml = check.late_night_flag
-    ? `<span class="t-b" style="font-weight:700">${fmtT(check.posted_at)} <span style="font-size:11px">🌙</span></span>`
-    : `<span class="mr-time">${fmtT(check.posted_at)}</span>`;
+  const sig  = check.signal || 'green';
+  const postedAt = report?.posted_at;
+  const tHtml = check.late_night_flag >= 2
+    ? `<span class="t-b" style="font-weight:700;color:var(--c-red)">${fmtT(postedAt)} <span style="font-size:11px">🌙</span></span>`
+    : check.late_night_flag === 1
+    ? `<span class="t-b" style="font-weight:700;color:var(--c-amb)">${fmtT(postedAt)} <span style="font-size:11px">🌆</span></span>`
+    : check.late_post_flag
+    ? `<span class="t-b" style="font-weight:700;color:var(--c-amb)">${fmtT(postedAt)} <span style="font-size:11px">⏰</span></span>`
+    : `<span class="mr-time">${fmtT(postedAt)}</span>`;
   let sHtml = '—';
   if (check.sentiment_score !== null && check.sentiment_score !== undefined) {
     const sc = check.sentiment_score, thr = cfg?.sentiment_threshold ?? 0.35;
@@ -737,19 +1001,34 @@ function renderMR(m, cfg) {
     const ic = check.volume_ratio < 0.95 ? '📉 ' : check.volume_ratio > 1.05 ? '📈 ' : '';
     vHtml = `<span class="${cl}">${ic}${p}</span>`;
   }
-  const fc = [];
-  if (check.late_night_flag) fc.push(`<span class="chip c-b" style="font-size:10px;padding:2px 6px">🌙</span>`);
-  if (check.sentiment_flag)  fc.push(`<span class="chip c-r" style="font-size:10px;padding:2px 6px">😟</span>`);
-  if (check.volume_flag)     fc.push(`<span class="chip c-a" style="font-size:10px;padding:2px 6px">${check.volume_ratio<1?'📉':'📈'}</span>`);
-  if (!fc.length)            fc.push(`<span class="chip c-g" style="font-size:10px;padding:2px 6px">✓</span>`);
+  const sigBadge = sig === 'red'
+    ? `<span class="sig-pill sig-r">🔴 赤</span>`
+    : sig === 'yellow'
+    ? `<span class="sig-pill sig-y">🟡 黄</span>`
+    : `<span class="sig-pill sig-g">🟢 青</span>`;
+  const subFlags = [
+    check.late_night_flag >= 2 ? `<span class="chip c-b" style="font-size:10px;padding:1px 5px">🌙</span>` :
+    check.late_night_flag === 1 ? `<span class="chip c-a" style="font-size:10px;padding:1px 5px">🌆</span>` :
+    check.late_post_flag ? `<span class="chip c-a" style="font-size:10px;padding:1px 5px">⏰</span>` : '',
+    check.volume_flag     ? `<span class="chip c-a" style="font-size:10px;padding:1px 5px">${check.volume_ratio<1?'📉':'📈'}</span>` : '',
+  ].filter(Boolean).join('');
 
-  return `<div class="mr ${row}">
-    <div class="dot ${dot}"></div>
-    <div><div class="mr-name">${name}</div>${report?`<div class="mr-meta">${report.char_count}字</div>`:''}</div>
+  // サマリー: Claude生成サマリー > 日報テキストの先頭60字
+  const rawText = report?.text ? report.text.replace(/\s+/g, ' ').trim() : '';
+  const textPreview = rawText.length > 60 ? rawText.slice(0, 60) + '…' : rawText;
+  const summary = check.sentiment_summary || textPreview || null;
+
+  return `<div class="mr ${signalRow(sig)}">
+    <div class="dot ${signalDot(sig)}"></div>
+    <div style="min-width:0">
+      <div class="mr-name">${name}</div>
+      ${summary ? `<div class="mr-summary">${summary}</div>` : ''}
+      <div class="mr-meta">${report ? `${report.char_count}字` : ''}${subFlags ? ' ' + subFlags : ''}</div>
+    </div>
     <div>${tHtml}</div>
     <div class="mr-sent">${sHtml}</div>
     <div class="mr-vol">${vHtml}</div>
-    <div class="mr-flags">${fc.join('')}</div>
+    <div class="mr-flags">${sigBadge}</div>
     <div style="display:flex;justify-content:flex-end">${monBtn}</div>
   </div>`;
 }
@@ -759,7 +1038,7 @@ function renderMR(m, cfg) {
 ════════════════════════════════════════ */
 function renderWeekly(tabs) {
   if (!S.weekly) { fetchWeekly(); return `<div class="spin-wrap"><div class="spinner"></div></div>`; }
-  const { week_start, week_end, days, today: td, group_tree, ungrouped, weekly_stats: ws } = S.weekly;
+  const { week_start, week_end, days, today: td, group_tree, ungrouped, weekly_stats: ws, day_org_stats } = S.weekly;
 
   const bar = `<div class="topbar">
     <div class="tb-left">
@@ -790,7 +1069,25 @@ function renderWeekly(tabs) {
     ...(ungrouped?.length ? [renderWkDeptBlock({name:'未分類',children:[],direct_members:ungrouped}, days, td)] : []),
   ];
 
-  return bar + statsBar + `<div class="wk-wrap">${allItems.join('')}</div>`;
+  // 週次組織ブロック: 全社行 + グループ別行
+  const grpRows = group_tree.map(top => {
+    const topMs = [...(top.children||[]).flatMap(c => c.members||[]), ...(top.direct_members||[])];
+    if (!topMs.length) return '';
+    let rows = renderWkOrgRow(top.name, days, d => calcDayStatsFromWkMs(topMs, d, td), td, true);
+    for (const child of (top.children||[])) {
+      if (!child.members?.length) continue;
+      rows += renderWkOrgRow(`└ ${child.name}`, days, d => calcDayStatsFromWkMs(child.members, d, td), td, true);
+    }
+    return rows;
+  }).join('');
+  const orgBlock = `<div class="wk-block">
+    <div class="wk-dept-hd"><span class="wk-dept-nm">📊 組織コンディション</span></div>
+    ${renderWkHdRow(days, td)}
+    ${day_org_stats ? renderWkOrgRow('全社', days, d => day_org_stats[d], td, false) : ''}
+    ${grpRows}
+  </div>`;
+
+  return bar + statsBar + `<div class="wk-wrap">${orgBlock}${allItems.join('')}</div>`;
 }
 
 function renderWkDeptBlock(dept, days, td) {
@@ -814,55 +1111,101 @@ function renderWkDeptBlock(dept, days, td) {
   </div>`;
 }
 
+// 日次データから信号を動的計算（フロント版）
+// late_night_flag: 2=23時〜翌5時(赤), 1=22時台(黄) / late_post_flag: 1=5〜13時(黄)
+function calcDaySig(dd) {
+  if (!dd?.posted) return null;
+  if (dd.late_night_flag >= 2) return 'red';
+  const s = dd.sentiment_score;
+  if (s !== null && s !== undefined) {
+    if (s <= 0.35) return 'red';
+  }
+  if (dd.late_night_flag === 1) return 'yellow';
+  if (s !== null && s !== undefined) {
+    if (s < 0.60) return 'yellow';
+  }
+  if (dd.late_post_flag) return 'yellow';
+  if (dd.volume_flag)    return 'yellow';
+  return 'green';
+}
+function sigPillClass(sig) {
+  return sig === 'red' ? 'cp-r' : sig === 'yellow' ? 'cp-a' : 'cp-g';
+}
+function sigEmoji(sig) {
+  return sig === 'red' ? '🔴' : sig === 'yellow' ? '🟡' : '🟢';
+}
+
 function renderWkHdRow(days, td) {
-  const cells = days.map(d => {
+  const weekdays = days.filter(d => !isWkend(d));
+  const cells = weekdays.map(d => {
     const lines = fmtDayHd(d).split('\n');
-    const cls   = d === td ? 'today' : isWkend(d) ? 'wkend' : '';
+    const cls   = d === td ? 'today' : '';
     return `<div class="wg-hd-cell ${cls}">${lines[0]}<br><span style="font-size:13px;font-weight:800">${lines[1]}</span></div>`;
   }).join('');
   return `<div class="wg-hd-row">
     <div class="wg-hd-cell" style="border-left:none;text-align:left;padding-left:14px">名前</div>
     ${cells}
+    <div class="wg-hd-cell wg-weekly-hd">週合計</div>
     <div class="wg-hd-cell">監視</div>
   </div>`;
 }
 
 function renderWkMemberRow(m, days, td) {
   const { user, days: dayData } = m;
-  const name = user.display_name || user.real_name || user.user_id;
+  const name = user.real_name || user.display_name || user.user_id;
+  const weekdays = days.filter(d => !isWkend(d));
 
-  const cells = days.map(d => {
+  // 日次セル（平日のみ・信号表示）
+  const cells = weekdays.map(d => {
     const dd = dayData[d];
-    if (!dd) return `<div class="wg-cell"><div class="cell-pill cp-fut"></div></div>`;
-    if (isWkend(d)) return `<div class="wg-cell wkend"><div class="cell-pill cp-none cp-wk">休</div></div>`;
-    if (dd.is_future)  return `<div class="wg-cell future"><div class="cell-pill cp-fut"></div></div>`;
-    if (!dd.posted)    return `<div class="wg-cell" onclick="gotoDay('${d}')" title="${d} 未投稿"><div class="cell-pill cp-none" style="font-size:11px">未投稿</div></div>`;
-
-    const fl    = dd.flag_count ?? 0;
-    const pcls  = fl >= 3 ? 'cp-r' : fl > 0 ? 'cp-a' : 'cp-g';
-    const time  = fmtT(dd.posted_at);
-    const flags = [
-      dd.late_night_flag  ? '🌙' : '',
-      dd.sentiment_flag   ? '😟' : '',
-      dd.volume_flag      ? (dd.volume_ratio < 1 ? '📉' : '📈') : '',
-    ].filter(Boolean).join('');
-    const fLine = fl > 0 ? `<div class="cell-flag">${flags}</div>` : '';
-    const title = `${d} ${time}${fl>0?' ⚠'+fl+'フラグ':''}`;
-    return `<div class="wg-cell" onclick="gotoDay('${d}')" title="${title}">
-      <div class="cell-pill ${pcls}">
-        <div class="cell-time">${time}</div>${fLine}
-      </div>
+    if (!dd || dd.is_future) return `<div class="wg-cell future"><div class="cell-pill cp-fut"></div></div>`;
+    if (!dd.posted) return `<div class="wg-cell" onclick="gotoDay('${d}')" title="${d} 未投稿" style="cursor:pointer">
+      <div class="cell-pill cp-none" style="font-size:10px;padding:6px 4px">📭<br>未投稿</div>
+    </div>`;
+    const sig  = calcDaySig(dd);
+    const pcls = sigPillClass(sig);
+    const ico  = sigEmoji(sig);
+    const title = `${d} — ${sig === 'red' ? '赤信号' : sig === 'yellow' ? '黄信号' : '青信号'}`;
+    return `<div class="wg-cell" onclick="gotoDay('${d}')" title="${title}" style="cursor:pointer">
+      <div class="cell-pill ${pcls}" style="font-size:15px;padding:6px 4px">${ico}</div>
     </div>`;
   }).join('');
+
+  // 週合計計算
+  let redCnt = 0, yellCnt = 0, grnCnt = 0, unpostedCnt = 0;
+  for (const d of weekdays) {
+    const dd = dayData[d];
+    if (!dd || dd.is_future) continue;
+    if (!dd.posted) { unpostedCnt++; continue; }
+    const sig = calcDaySig(dd);
+    if (sig === 'red') redCnt++;
+    else if (sig === 'yellow') yellCnt++;
+    else grnCnt++;
+  }
+  const worstSig = redCnt > 0 ? 'red' : yellCnt > 0 ? 'yellow' : grnCnt > 0 ? 'green' : null;
+  const breakdown = [
+    redCnt    ? `🔴${redCnt}` : '',
+    yellCnt   ? `🟡${yellCnt}` : '',
+    grnCnt    ? `🟢${grnCnt}` : '',
+    unpostedCnt ? `📭${unpostedCnt}` : '',
+  ].filter(Boolean).join(' ');
+
+  const weeklyCell = worstSig
+    ? `<div class="wg-weekly-cell"><div style="text-align:center">
+        <div class="cell-pill ${sigPillClass(worstSig)}" style="font-size:15px;padding:5px 4px;margin:0 auto 4px">${sigEmoji(worstSig)}</div>
+        <div style="font-size:9.5px;color:var(--c-t3);white-space:nowrap;line-height:1.4">${breakdown}</div>
+       </div></div>`
+    : `<div class="wg-weekly-cell"><div class="cell-pill cp-none" style="font-size:10px">—</div></div>`;
 
   const monBtn = S.role === 'admin' ? `<button class="mon-btn mon-on" onclick="toggleMon('${user.user_id}',0)">監視中</button>` : '';
 
   return `<div class="wg-row">
     <div class="wg-name">
-      <div class="dot d-g"></div>
+      <div class="dot ${worstSig ? signalDot(worstSig) : 'd-n'}"></div>
       <div class="wg-name-txt">${name}</div>
     </div>
     ${cells}
+    ${weeklyCell}
     <div class="wg-toggle">${monBtn}</div>
   </div>`;
 }
@@ -873,11 +1216,19 @@ function renderWkMemberRow(m, days, td) {
 function renderMembersV() {
   if (!S.members) { fetchMembers().then(render); return `<div class="spin-wrap"><div class="spinner"></div></div>`; }
 
-  const gOpts = `<option value="">（未分類）</option>` +
-    S.groups.map(g => `<option value="${g.id}">${g.parent_id?'　└ ':''}${g.name}</option>`).join('');
+  const gOptItems = [`<option value="">（未分類）</option>`];
+  const topGs  = S.groups.filter(g => !g.parent_id);
+  const childGs = S.groups.filter(g =>  g.parent_id);
+  for (const top of topGs) {
+    gOptItems.push(`<option value="${top.id}">${top.name}</option>`);
+    for (const child of childGs.filter(c => c.parent_id === top.id)) {
+      gOptItems.push(`<option value="${child.id}">　└ ${child.name}</option>`);
+    }
+  }
+  const gOpts = gOptItems.join('');
 
   const rows = S.members.map(m => {
-    const name = m.display_name || m.real_name || m.user_id;
+    const name = m.real_name || m.display_name || m.user_id;
     const sel  = gOpts.replace(`value="${m.group_id??''}"`, `value="${m.group_id??''}" selected`);
     return `<div class="cr">
       <div style="flex:1;min-width:0">
@@ -964,13 +1315,14 @@ function renderSettingsV() {
     {key:'volume_min_samples',   lbl:'最低データ件数',      desc:'文量チェックに必要な最低データ件数',              ph:'3'},
     {key:'summary_cron',         lbl:'自動チェック時刻',    desc:'cron式 JST（例: 0 4 * * * = 毎日4時）',          ph:'0 4 * * *'},
     {key:'report_channel_id',    lbl:'日報チャンネルID',    desc:'収集対象のSlackチャンネルID',                     ph:'C056L3ZQLKD'},
-    {key:'workflow_bot_id',      lbl:'ワークフローBotID',   desc:'空の場合はユーザー直接投稿のみ収集',              ph:'B0XXXXXX（任意）'},
+    {key:'workflow_bot_id',      lbl:'ワークフローBotID',   desc:'空の場合はユーザー直接投稿のみ収集',              ph:'B0XXXXXX（任意）', detectBtn: true},
     {key:'user_id_regex',        lbl:'投稿者抽出regex',     desc:'bot_messageからuser_idを抽出する正規表現',        ph:'<@(U[A-Z0-9]+)>'},
   ];
   const rows = items.map(r => `<div class="cr">
     <div><div class="cr-lbl">${r.lbl}</div><div class="cr-desc">${r.desc}</div></div>
-    <div class="cr-ctrl">
+    <div class="cr-ctrl" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
       <input class="inp" id="c-${r.key}" value="${(cm[r.key]?.value??'').replace(/"/g,'&quot;')}" placeholder="${r.ph}" style="width:196px">
+      ${r.detectBtn ? `<button class="btn btn-sec btn-sm" onclick="detectWorkflowBot()" id="btn-detect-bot">🔍 Bot検出</button>` : ''}
       <button class="btn btn-sec btn-sm" onclick="saveCfg('${r.key}')">保存</button>
     </div>
   </div>`).join('');
@@ -1385,6 +1737,46 @@ async function saveCfg(key) {
   } catch(e) { toast(`❌ ${e.message}`, 'err'); }
 }
 
+async function detectWorkflowBot() {
+  const btn = document.getElementById('btn-detect-bot');
+  if (btn) { btn.disabled = true; btn.textContent = '検出中…'; }
+  try {
+    const r = await api('GET', `/api/check/detect-workflow-bot?date=${S.date || today()}`);
+    if (btn) { btn.disabled = false; btn.textContent = '🔍 Bot検出'; }
+    if (!r.ok) { toast(`❌ ${r.error}`, 'err'); return; }
+    if (!r.bots || r.bots.length === 0) {
+      toast(`⚠️ ${r.date} のbot_messageが見つかりませんでした（合計${r.total}件）`, 'warn');
+      return;
+    }
+    // 候補を表示してクリックで入力欄にセット
+    const list = r.bots.map(b =>
+      `<div style="padding:8px 12px;border-bottom:1px solid var(--c-bdr);cursor:pointer;hover:background:var(--c-bg)"
+        onclick="document.getElementById('c-workflow_bot_id').value='${b.bot_id}';document.getElementById('bot-detect-modal').remove();toast('✅ ${b.bot_id} をセットしました。保存してください。','ok')"
+       >
+        <div style="font-weight:600;font-size:13px">${b.bot_name || '（名前なし）'}</div>
+        <div style="font-size:11.5px;color:var(--c-t3);margin-top:2px">ID: <code>${b.bot_id}</code> ・ ${b.count}件</div>
+        <div style="font-size:11px;color:var(--c-t4);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${b.sample}</div>
+      </div>`
+    ).join('');
+    const modal = document.createElement('div');
+    modal.id = 'bot-detect-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:9999;display:flex;align-items:center;justify-content:center';
+    modal.innerHTML = `<div style="background:#fff;border-radius:14px;width:440px;max-height:80vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)">
+      <div style="padding:16px 20px;border-bottom:1px solid var(--c-bdr);font-weight:700;font-size:15px;display:flex;justify-content:space-between;align-items:center">
+        🤖 検出されたワークフローBot
+        <button onclick="document.getElementById('bot-detect-modal').remove()" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--c-t3)">×</button>
+      </div>
+      <div style="padding:8px 0;font-size:12px;color:var(--c-t3);padding:8px 16px">クリックして入力欄にセット → 保存してください</div>
+      ${list}
+    </div>`;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  } catch(e) {
+    if (btn) { btn.disabled = false; btn.textContent = '🔍 Bot検出'; }
+    toast(`❌ ${e.message}`, 'err');
+  }
+}
+
 /* ════════════════════════════════════════
    Formatters
 ════════════════════════════════════════ */
@@ -1419,12 +1811,6 @@ api('GET', '/api/me').then(r => {
 });
 
 fetchDash();
-setInterval(() => {
-  if (S.view === 'overview') {
-    if (S.sub === 'week') fetchWeekly();
-    else fetchDash();
-  }
-}, 60000);
 </script>
 </body>
 </html>

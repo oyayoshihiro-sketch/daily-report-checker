@@ -108,6 +108,16 @@ function initTables() {
     );
   `);
 
+  // condition_checks に signal / sentiment_summary / late_post_flag 列を追加（マイグレーション）
+  try {
+    const ccCols = _db.prepare('PRAGMA table_info(condition_checks)').all().map(c => c.name);
+    if (!ccCols.includes('signal'))            _db.exec("ALTER TABLE condition_checks ADD COLUMN signal TEXT");
+    if (!ccCols.includes('sentiment_summary')) _db.exec("ALTER TABLE condition_checks ADD COLUMN sentiment_summary TEXT");
+    if (!ccCols.includes('late_post_flag'))    _db.exec("ALTER TABLE condition_checks ADD COLUMN late_post_flag INTEGER NOT NULL DEFAULT 0");
+  } catch (e) {
+    console.error('[db] condition_checks migration error:', e.message);
+  }
+
   // 旧スキーマ（username列）からの移行
   try {
     const cols = _db.prepare('PRAGMA table_info(dashboard_users)').all().map(c => c.name);
@@ -319,26 +329,33 @@ function seedConfig() {
   for (const c of DEFAULT_CONFIG) {
     stmt.run(c.key, c.value, c.description);
   }
-  // 旧プロンプト（{DAILY_REPORT_TEXT} を含まない）を新デフォルトに自動アップグレード
+  // 旧プロンプト（{DAILY_REPORT_TEXT} を含まない、または "summary" フィールドがない）を新デフォルトに自動アップグレード
   const cur = _db.prepare("SELECT value FROM config WHERE key = 'sentiment_prompt'").get();
-  if (cur && !cur.value.includes('{DAILY_REPORT_TEXT}')) {
+  if (cur && (!cur.value.includes('{DAILY_REPORT_TEXT}') || !cur.value.includes('"summary"'))) {
     _db.prepare("UPDATE config SET value = ? WHERE key = 'sentiment_prompt'").run(SENTIMENT_PROMPT_DEFAULT);
-    console.log('[db] sentiment_prompt を新デフォルトにアップグレードしました');
+    console.log('[db] sentiment_prompt を新デフォルトにアップグレードしました（summary フィールド追加）');
   }
 }
 
 // ── daily_reports ────────────────────────────────────────────────────────────
 
 function upsertReport({ userId, reportDate, postedAt, postedHour, text, charCount, ts, channelId }) {
-  return getDb().prepare(`
+  const db = getDb();
+  // 同じtsが別の report_date で保存されている場合は削除（27時制による日付訂正）
+  const existing = db.prepare('SELECT report_date FROM daily_reports WHERE ts = ?').get(ts);
+  if (existing && existing.report_date !== reportDate) {
+    console.log(`[db] 日付訂正: ts=${ts} を ${existing.report_date} → ${reportDate} に移動`);
+    db.prepare('DELETE FROM daily_reports WHERE ts = ?').run(ts);
+  }
+  return db.prepare(`
     INSERT INTO daily_reports (user_id, report_date, posted_at, posted_hour, text, char_count, ts, channel_id)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(user_id, report_date) DO UPDATE SET
-      posted_at  = excluded.posted_at,
+      posted_at   = excluded.posted_at,
       posted_hour = excluded.posted_hour,
-      text       = excluded.text,
-      char_count = excluded.char_count,
-      ts         = excluded.ts
+      text        = excluded.text,
+      char_count  = excluded.char_count,
+      ts          = excluded.ts
   `).run(userId, reportDate, postedAt, postedHour, text, charCount, ts, channelId);
 }
 
@@ -357,20 +374,23 @@ function getRecentReports(userId, limit) {
 function upsertCheck(data) {
   return getDb().prepare(`
     INSERT INTO condition_checks
-      (user_id, check_date, posted, late_night_flag, sentiment_flag, sentiment_score,
-       volume_flag, volume_ratio, flag_count)
+      (user_id, check_date, posted, late_night_flag, late_post_flag, sentiment_flag, sentiment_score,
+       volume_flag, volume_ratio, flag_count, signal, sentiment_summary)
     VALUES
-      (@userId, @checkDate, @posted, @lateNightFlag, @sentimentFlag, @sentimentScore,
-       @volumeFlag, @volumeRatio, @flagCount)
+      (@userId, @checkDate, @posted, @lateNightFlag, @latePostFlag, @sentimentFlag, @sentimentScore,
+       @volumeFlag, @volumeRatio, @flagCount, @signal, @sentimentSummary)
     ON CONFLICT(user_id, check_date) DO UPDATE SET
-      posted         = excluded.posted,
-      late_night_flag = excluded.late_night_flag,
-      sentiment_flag = excluded.sentiment_flag,
-      sentiment_score = excluded.sentiment_score,
-      volume_flag    = excluded.volume_flag,
-      volume_ratio   = excluded.volume_ratio,
-      flag_count     = excluded.flag_count,
-      created_at     = datetime('now')
+      posted             = excluded.posted,
+      late_night_flag    = excluded.late_night_flag,
+      late_post_flag     = excluded.late_post_flag,
+      sentiment_flag     = excluded.sentiment_flag,
+      sentiment_score    = excluded.sentiment_score,
+      volume_flag        = excluded.volume_flag,
+      volume_ratio       = excluded.volume_ratio,
+      flag_count         = excluded.flag_count,
+      signal             = excluded.signal,
+      sentiment_summary  = excluded.sentiment_summary,
+      created_at         = datetime('now')
   `).run(data);
 }
 

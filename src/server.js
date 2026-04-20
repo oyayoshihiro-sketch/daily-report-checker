@@ -183,6 +183,25 @@ function createServer() {
       const checkMap = Object.fromEntries(checks.map(c => [c.user_id, c]));
       const groupMap = Object.fromEntries(allGroups.map(g => [g.id, g]));
 
+      // フラグ＋スコアから信号を動的計算（旧DBレコードも正しく扱う）
+      // late_night_flag: 2=23時〜翌5時(赤), 1=22時台(黄), 0=通常
+      // late_post_flag:  1=翌5〜13時(投稿遅れ→黄)
+      const calcSig = c => {
+        if (!c?.posted) return null;
+        if (c.late_night_flag >= 2) return 'red';
+        const s = c.sentiment_score;
+        if (s !== null && s !== undefined) {
+          if (s <= 0.35) return 'red';
+        }
+        if (c.late_night_flag >= 1) return 'yellow';
+        if (s !== null && s !== undefined) {
+          if (s < 0.60) return 'yellow';
+        }
+        if (c.late_post_flag) return 'yellow';
+        if (c.volume_flag)    return 'yellow';
+        return 'green';
+      };
+
       const enriched = allMembers.map(member => {
         const check = checkMap[member.user_id] || null;
         const report = check?.posted ? db.getReport(member.user_id, date) : null;
@@ -192,22 +211,30 @@ function createServer() {
           const parent = g.parent_id ? groupMap[g.parent_id] : null;
           group = { id: g.id, name: g.name, parent: parent ? { id: parent.id, name: parent.name } : null };
         }
+        const signal = calcSig(check);
         return {
           user: { user_id: member.user_id, display_name: member.display_name, real_name: member.real_name, group },
           check: check ? {
             posted: check.posted, flag_count: check.flag_count,
-            late_night_flag: check.late_night_flag, sentiment_flag: check.sentiment_flag,
+            late_night_flag: check.late_night_flag, late_post_flag: check.late_post_flag || 0,
+            sentiment_flag: check.sentiment_flag,
             sentiment_score: check.sentiment_score, volume_flag: check.volume_flag,
             volume_ratio: check.volume_ratio, posted_at: check.posted_at,
+            signal,
+            sentiment_summary: check.sentiment_summary || null,
+            composite: (check.late_night_flag||0) + (check.late_post_flag||0) + (check.sentiment_flag||0) + (check.volume_flag||0),
           } : null,
-          report: report ? { char_count: report.char_count } : null,
+          report: report ? { char_count: report.char_count, posted_at: report.posted_at, text: report.text } : null,
         };
       });
 
-      const posted   = enriched.filter(m => m.check?.posted).length;
-      const missing  = enriched.length - posted;
-      const flagged  = enriched.filter(m => (m.check?.flag_count ?? 0) > 0).length;
-      const critical = enriched.filter(m => (m.check?.flag_count ?? 0) >= 3).length;
+      const posted      = enriched.filter(m => m.check?.posted).length;
+      const missing     = enriched.length - posted;
+      const flagged     = enriched.filter(m => (m.check?.flag_count ?? 0) > 0).length;
+      const critical    = enriched.filter(m => (m.check?.flag_count ?? 0) >= 3).length;
+      const redCount    = enriched.filter(m => m.check?.signal === 'red').length;
+      const yellowCount = enriched.filter(m => m.check?.signal === 'yellow').length;
+      const greenCount  = enriched.filter(m => m.check?.signal === 'green').length;
 
       const topGroups = allGroups.filter(g => !g.parent_id);
       const groupTree = topGroups.map(top => {
@@ -218,6 +245,21 @@ function createServer() {
         return { id: top.id, name: top.name, children, direct_members: enriched.filter(m => m.user.group?.id === top.id) };
       });
 
+      // 組織全体スコア
+      const postedMs  = enriched.filter(m => m.check?.posted);
+      const orgScores = postedMs.map(m => m.check?.sentiment_score).filter(s => s != null);
+      const orgScore  = orgScores.length ? orgScores.reduce((a, b) => a + b, 0) / orgScores.length : null;
+      const orgSignal = orgScore != null
+        ? (orgScore <= 0.35 ? 'red' : orgScore < 0.60 ? 'yellow' : 'green')
+        : (redCount > 0 ? 'red' : yellowCount > 0 ? 'yellow' : greenCount > 0 ? 'green' : null);
+      const postingRate = enriched.length ? postedMs.length / enriched.length : 0;
+      const opct = Math.round(postingRate * 100);
+      const ocond = orgSignal === 'red' ? '要警戒' : orgSignal === 'yellow' ? '要注意' : '良好';
+      const oScorePart = orgScore != null ? `平均スコア${orgScore.toFixed(2)}（${ocond}）` : `コンディション${orgSignal ? ocond : '計算中'}`;
+      const oFlags = [redCount > 0 ? `赤信号${redCount}名` : '', yellowCount > 0 ? `黄信号${yellowCount}名` : ''].filter(Boolean);
+      const orgSummary = `投稿率${opct}%・${oScorePart}${oFlags.length ? '。' + oFlags.join('・') + 'が要注意' : ''}。`;
+      const orgStats = { score: orgScore, signal: orgSignal, posting_rate: postingRate, summary: orgSummary };
+
       res.json({
         date,
         config: {
@@ -227,7 +269,8 @@ function createServer() {
           volume_lookback_days: cfg.get('volume_lookback_days'),
           summary_cron: cfg.get('summary_cron'),
         },
-        stats: { total: enriched.length, posted, missing, flagged, critical },
+        stats: { total: enriched.length, posted, missing, flagged, critical, redCount, yellowCount, greenCount },
+        org_stats: orgStats,
         members: enriched,
         group_tree: groupTree,
         ungrouped: enriched.filter(m => !m.user.group),
@@ -244,6 +287,57 @@ function createServer() {
     try {
       const results = await runCheckForDate(date);
       res.json({ ok: true, date, count: results.length });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // 生メッセージ確認: チャンネルの実際のメッセージをデバッグ用に返す
+  server.get('/api/debug/messages', requireAdmin, async (req, res) => {
+    try {
+      const { getChannelHistory } = require('./slack');
+      const channelId = cfg.get('report_channel_id');
+      const date = req.query.date || todayJst();
+      const oldest = new Date(date + 'T00:00:00+09:00').getTime() / 1000;
+      const latest = new Date(date + 'T23:59:59+09:00').getTime() / 1000;
+      const messages = await getChannelHistory(channelId, oldest, latest);
+      const userIdRegex = cfg.get('user_id_regex');
+      res.json({
+        date, channelId, total: messages.length,
+        messages: messages.slice(0, 20).map(m => {
+          const match = userIdRegex ? m.text?.match(new RegExp(userIdRegex)) : null;
+          return {
+            subtype: m.subtype || 'user',
+            user: m.user || null,
+            bot_id: m.bot_id || null,
+            bot_name: m.username || m.bot_profile?.name || null,
+            text_preview: (m.text || '').slice(0, 200),
+            regex_match: match?.[1] || null,
+          };
+        }),
+      });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // ワークフローBot検出: 日報チャンネルの直近メッセージからbot_idを列挙する
+  server.get('/api/check/detect-workflow-bot', requireAdmin, async (req, res) => {
+    try {
+      const { getChannelHistory } = require('./slack');
+      const channelId = cfg.get('report_channel_id');
+      const date = req.query.date || todayJst();
+      const oldest = new Date(date + 'T00:00:00+09:00').getTime() / 1000;
+      const latest = new Date(date + 'T23:59:59+09:00').getTime() / 1000;
+      const messages = await getChannelHistory(channelId, oldest, latest);
+      const bots = {};
+      for (const m of messages) {
+        if (m.subtype === 'bot_message' && m.bot_id) {
+          if (!bots[m.bot_id]) bots[m.bot_id] = { bot_id: m.bot_id, bot_name: m.username || m.bot_profile?.name || '', sample: (m.text || '').slice(0, 80), count: 0 };
+          bots[m.bot_id].count++;
+        }
+      }
+      res.json({ ok: true, date, total: messages.length, bots: Object.values(bots) });
     } catch (e) {
       res.status(500).json({ ok: false, error: e.message });
     }
@@ -297,7 +391,9 @@ function createServer() {
             checked: !!check,
             flag_count:      check?.flag_count      ?? 0,
             late_night_flag: check?.late_night_flag  ?? 0,
+            late_post_flag:  check?.late_post_flag   ?? 0,
             sentiment_flag:  check?.sentiment_flag   ?? 0,
+            sentiment_score: check?.sentiment_score  ?? null,
             volume_flag:     check?.volume_flag      ?? 0,
             posted_at:  report?.posted_at || null,
             char_count: report?.char_count ?? null,
@@ -323,10 +419,46 @@ function createServer() {
         if (d.posted) { totalPosted++; if (d.flag_count > 0) totalFlagged++; }
       }
 
+      // 日次ごとの組織スコア
+      const weekdays = days.filter(d => !isWeekend(d));
+      const dayOrgStats = {};
+      for (const day of weekdays) {
+        if (day > today) { dayOrgStats[day] = null; continue; }
+        const dayMs   = enriched.filter(m => !m.days[day]?.is_weekend);
+        const postedD = dayMs.filter(m => m.days[day]?.posted);
+        const scoresD = postedD.map(m => m.days[day]?.sentiment_score).filter(s => s != null);
+        const orgScoreD = scoresD.length ? scoresD.reduce((a, b) => a + b, 0) / scoresD.length : null;
+        let rD = 0, yD = 0, gD = 0;
+        for (const m of postedD) {
+          const dd = m.days[day];
+          const s = dd.sentiment_score;
+          let sig = 'green';
+          if (dd.late_night_flag >= 2) sig = 'red';
+          else if (s != null && s <= 0.35) sig = 'red';
+          else if (dd.late_night_flag === 1) sig = 'yellow';
+          else if (s != null && s < 0.60) sig = 'yellow';
+          else if (dd.late_post_flag) sig = 'yellow';
+          else if (dd.volume_flag) sig = 'yellow';
+          if (sig === 'red') rD++; else if (sig === 'yellow') yD++; else gD++;
+        }
+        const orgSignalD = orgScoreD != null
+          ? (orgScoreD <= 0.35 ? 'red' : orgScoreD < 0.60 ? 'yellow' : 'green')
+          : (rD > 0 ? 'red' : yD > 0 ? 'yellow' : gD > 0 ? 'green' : null);
+        const postingRateD = dayMs.length ? postedD.length / dayMs.length : 0;
+        const pctD = Math.round(postingRateD * 100);
+        const condD = orgSignalD === 'red' ? '要警戒' : orgSignalD === 'yellow' ? '要注意' : '良好';
+        const flagsD = [rD > 0 ? `赤${rD}名` : '', yD > 0 ? `黄${yD}名` : ''].filter(Boolean);
+        const summaryD = orgScoreD != null
+          ? `スコア${orgScoreD.toFixed(2)}（${condD}）・投稿率${pctD}%${flagsD.length ? '・' + flagsD.join('/') : ''}`
+          : `投稿率${pctD}%`;
+        dayOrgStats[day] = { score: orgScoreD, signal: orgSignalD, posting_rate: postingRateD, summary: summaryD, red_count: rD, yellow_count: yD };
+      }
+
       res.json({
         week_start: days[0], week_end: days[6], days, today,
         group_tree: groupTree, ungrouped: enriched.filter(m => !m.user.group),
         weekly_stats: { total_expected: totalExpected, total_posted: totalPosted, total_flagged: totalFlagged },
+        day_org_stats: dayOrgStats,
       });
     } catch (e) {
       console.error('/api/weekly error:', e);

@@ -14,7 +14,8 @@ async function syncChannelMembers() {
         if (user.deleted) continue;
         db.upsertMember({
           userId: user.id,
-          displayName: user.profile?.display_name_normalized || user.profile?.display_name || user.name,
+          // normalized は ASCII 変換版なので非normalized を優先
+          displayName: user.profile?.display_name || user.profile?.display_name_normalized || user.name,
           realName: user.profile?.real_name || user.real_name,
           isBot: user.is_bot || user.id === 'USLACKBOT',
         });
