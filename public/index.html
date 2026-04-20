@@ -712,6 +712,13 @@ function scoreToSig(s) {
 function sigIcon(sig) { return sig === 'red' ? '🔴' : sig === 'yellow' ? '🟡' : sig === 'green' ? '🟢' : '—'; }
 function sigText(sig) { return sig === 'red' ? '要警戒' : sig === 'yellow' ? '要注意' : '良好'; }
 function sigCl(sig)   { return sig === 'red' ? 't-r'   : sig === 'yellow' ? 't-a'   : 't-g'; }
+// 投稿率: <50%=赤危険, 50〜79%=黄注意, ≥80%=緑順調
+function rateSig(rate) {
+  const pct = Math.round((rate || 0) * 100);
+  if (pct < 50) return { cl: 't-r', icon: '🚨' };
+  if (pct < 80) return { cl: 't-a', icon: '⚠️' };
+  return { cl: 't-g', icon: '✅' };
+}
 
 // 日次: enriched members ({check}) から2軸の統計計算
 function calcOrgStatsFromDailyMs(ms) {
@@ -757,7 +764,8 @@ function renderOrgSigBlock(label, score, sig) {
 
 function renderOrgCard(os, title = '全社コンディション') {
   if (!os) return '';
-  const rateStr = Math.round((os.posting_rate || 0) * 100) + '%';
+  const pct = Math.round((os.posting_rate || 0) * 100);
+  const { cl: rCl, icon: rIco } = rateSig(os.posting_rate);
   return `<div class="org-card">
     <div class="org-card-label" style="margin-bottom:12px">${title}</div>
     <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;margin-bottom:12px">
@@ -767,7 +775,7 @@ function renderOrgCard(os, title = '全社コンディション') {
       <div style="width:1px;background:var(--c-bdr2);align-self:stretch;margin:0 4px"></div>
       <div style="flex:0 0 auto">
         <div style="font-size:10px;color:var(--c-t4);margin-bottom:5px">📋 投稿率</div>
-        <div style="font-size:22px;font-weight:800;color:var(--c-t1)">${rateStr}</div>
+        <div style="font-size:22px;font-weight:800" class="${rCl}">${rIco} ${pct}%</div>
       </div>
     </div>
     <div class="org-summary-line">${os.summary || ''}</div>
@@ -775,7 +783,8 @@ function renderOrgCard(os, title = '全社コンディション') {
 }
 
 function renderOrgMiniCard(name, os, isChild) {
-  const rateStr = Math.round((os.posting_rate || 0) * 100) + '%';
+  const pct = Math.round((os.posting_rate || 0) * 100);
+  const { cl: rCl, icon: rIco } = rateSig(os.posting_rate);
   const sentStr = os.sentScore != null ? os.sentScore.toFixed(2) : '—';
   const timeStr = os.timeScore != null ? os.timeScore.toFixed(2) : '—';
   return `<div class="org-grp-card${isChild ? ' org-grp-child' : ''}">
@@ -790,7 +799,7 @@ function renderOrgMiniCard(name, os, isChild) {
         <span style="font-weight:800" class="${sigCl(os.timeSig)}">${sigIcon(os.timeSig)} ${timeStr}</span>
       </div>
     </div>
-    <div class="org-grp-rate">投稿率 ${rateStr}</div>
+    <div class="org-grp-rate ${rCl}">${rIco} 投稿率 ${pct}%</div>
   </div>`;
 }
 
@@ -798,12 +807,20 @@ function renderGroupOrgSection(groupTree) {
   if (!groupTree?.length) return '';
   const cards = [];
   for (const top of groupTree) {
-    const topMs = [...(top.children||[]).flatMap(c => c.members||[]), ...(top.direct_members||[])];
+    const topMs = [
+      ...(top.children||[]).flatMap(c => [...(c.members||[]), ...(c.children||[]).flatMap(gc => gc.members||[])]),
+      ...(top.direct_members||[])
+    ];
     if (!topMs.length) continue;
     cards.push(renderOrgMiniCard(top.name, calcOrgStatsFromDailyMs(topMs), false));
     for (const child of (top.children||[])) {
-      if (!child.members?.length) continue;
-      cards.push(renderOrgMiniCard(`└ ${child.name}`, calcOrgStatsFromDailyMs(child.members), true));
+      const childMs = [...(child.members||[]), ...(child.children||[]).flatMap(gc => gc.members||[])];
+      if (!childMs.length) continue;
+      cards.push(renderOrgMiniCard(`└ ${child.name}`, calcOrgStatsFromDailyMs(childMs), true));
+      for (const gc of (child.children||[])) {
+        if (!gc.members?.length) continue;
+        cards.push(renderOrgMiniCard(`　└ ${gc.name}`, calcOrgStatsFromDailyMs(gc.members), true));
+      }
     }
   }
   return cards.length ? `<div class="org-grp-grid">${cards.join('')}</div>` : '';
@@ -821,11 +838,12 @@ function renderWkOrgRow(name, days, dayStatsFn, td, isGroup) {
     const os = dayStatsFn(d);
     if (!os || d > td) return `<div class="wg-cell future"><div class="cell-pill cp-fut"></div></div>`;
     const pct = Math.round((os.posting_rate || 0) * 100);
+    const { cl: rCl, icon: rIco } = rateSig(os.posting_rate);
     return `<div class="wg-cell">
       <div style="padding:4px 6px;display:flex;flex-direction:column;gap:2px;align-items:flex-start">
         ${sigRow('感情', os.sentSig)}
         ${sigRow('時刻', os.timeSig)}
-        <div style="font-size:8.5px;color:var(--c-t4);margin-top:1px;padding-left:21px">投稿率${pct}%</div>
+        <div style="font-size:8.5px;margin-top:1px;padding-left:21px" class="${rCl}">${rIco} ${pct}%</div>
       </div>
     </div>`;
   }).join('');
@@ -837,11 +855,13 @@ function renderWkOrgRow(name, days, dayStatsFn, td, isGroup) {
   const wkTimeScore  = wkTimeScores.length ? wkTimeScores.reduce((a,b)=>a+b,0)/wkTimeScores.length : null;
   const wkRates = validDays.map(d => dayStatsFn(d)?.posting_rate).filter(r => r != null);
   const avgRate = wkRates.length ? Math.round(wkRates.reduce((a,b)=>a+b,0)/wkRates.length*100) : null;
+  const avgRateRatio = avgRate != null ? avgRate / 100 : null;
+  const { cl: wkRCl, icon: wkRIco } = avgRateRatio != null ? rateSig(avgRateRatio) : { cl: '', icon: '' };
   const wkCell = `<div class="wg-weekly-cell">
     <div style="padding:4px 6px;display:flex;flex-direction:column;gap:2px;align-items:flex-start">
       ${sigRow('感情', scoreToSig(wkSentScore))}
       ${sigRow('時刻', scoreToSig(wkTimeScore))}
-      ${avgRate != null ? `<div style="font-size:8.5px;color:var(--c-t4);margin-top:1px;padding-left:21px">平均${avgRate}%</div>` : ''}
+      ${avgRate != null ? `<div style="font-size:8.5px;margin-top:1px;padding-left:21px" class="${wkRCl}">${wkRIco} ${avgRate}%</div>` : ''}
     </div>
   </div>`;
   const rowCl   = isGroup ? 'wg-org-row grp' : 'wg-org-row';
@@ -856,7 +876,7 @@ function renderWkOrgRow(name, days, dayStatsFn, td, isGroup) {
 function renderAC(m, cfg) {
   const { user, check, report } = m;
   const name   = user.real_name || user.display_name || user.user_id;
-  const grp    = user.group ? (user.group.parent ? `${user.group.parent.name} › ${user.group.name}` : user.group.name) : '未分類';
+  const grp    = user.group ? (user.group.parent?.parent ? `${user.group.parent.parent.name} › ${user.group.parent.name} › ${user.group.name}` : user.group.parent ? `${user.group.parent.name} › ${user.group.name}` : user.group.name) : '未分類';
   const signal = check.signal || 'yellow';
   const chips = [
     check.late_night_flag ? `<span class="chip c-b">🌙 深夜</span>` : '',
@@ -905,17 +925,29 @@ function renderDeptTree(groupTree, ungrouped, cfg) {
 }
 
 function renderDeptBlock(dept, cfg) {
-  const all  = [...dept.children.flatMap(c=>c.members||[]), ...(dept.direct_members||[])];
+  const all = [
+    ...(dept.children||[]).flatMap(c => [...(c.members||[]), ...(c.children||[]).flatMap(gc => gc.members||[])]),
+    ...(dept.direct_members||[])
+  ];
   const post = all.filter(m=>m.check?.posted).length;
   let body = '';
   for (const child of (dept.children||[])) {
-    if (!child.members?.length) continue;
-    const sorted = sortBySignal(child.members);
-    const cp = sorted.filter(m=>m.check?.posted).length;
-    body += `<div>
-      <div class="tm-hd"><span class="tm-hd-name">▸ ${child.name}</span><span class="tm-hd-stat">${cp}/${sorted.length}名</span></div>
-      ${renderTblHd()}${sorted.map(m=>renderMR(m,cfg)).join('')}
-    </div>`;
+    const childAll = [...(child.members||[]), ...(child.children||[]).flatMap(gc => gc.members||[])];
+    if (!childAll.length) continue;
+    const childCp = childAll.filter(m=>m.check?.posted).length;
+    body += `<div><div class="tm-hd"><span class="tm-hd-name">▸ ${child.name}</span><span class="tm-hd-stat">${childCp}/${childAll.length}名</span></div>`;
+    if ((child.members||[]).length) {
+      const sorted = sortBySignal(child.members);
+      body += renderTblHd() + sorted.map(m=>renderMR(m,cfg)).join('');
+    }
+    for (const gc of (child.children||[])) {
+      if (!gc.members?.length) continue;
+      const gcSorted = sortBySignal(gc.members);
+      const gcp = gcSorted.filter(m=>m.check?.posted).length;
+      body += `<div class="tm-hd" style="padding-left:28px"><span class="tm-hd-name">└ ${gc.name}</span><span class="tm-hd-stat">${gcp}/${gcSorted.length}名</span></div>`;
+      body += renderTblHd() + gcSorted.map(m=>renderMR(m,cfg)).join('');
+    }
+    body += `</div>`;
   }
   if ((dept.direct_members||[]).length) {
     const sorted = sortBySignal(dept.direct_members);
@@ -1071,12 +1103,20 @@ function renderWeekly(tabs) {
 
   // 週次組織ブロック: 全社行 + グループ別行
   const grpRows = group_tree.map(top => {
-    const topMs = [...(top.children||[]).flatMap(c => c.members||[]), ...(top.direct_members||[])];
+    const topMs = [
+      ...(top.children||[]).flatMap(c => [...(c.members||[]), ...(c.children||[]).flatMap(gc => gc.members||[])]),
+      ...(top.direct_members||[])
+    ];
     if (!topMs.length) return '';
     let rows = renderWkOrgRow(top.name, days, d => calcDayStatsFromWkMs(topMs, d, td), td, true);
     for (const child of (top.children||[])) {
-      if (!child.members?.length) continue;
-      rows += renderWkOrgRow(`└ ${child.name}`, days, d => calcDayStatsFromWkMs(child.members, d, td), td, true);
+      const childMs = [...(child.members||[]), ...(child.children||[]).flatMap(gc => gc.members||[])];
+      if (!childMs.length) continue;
+      rows += renderWkOrgRow(`└ ${child.name}`, days, d => calcDayStatsFromWkMs(childMs, d, td), td, true);
+      for (const gc of (child.children||[])) {
+        if (!gc.members?.length) continue;
+        rows += renderWkOrgRow(`　└ ${gc.name}`, days, d => calcDayStatsFromWkMs(gc.members, d, td), td, true);
+      }
     }
     return rows;
   }).join('');
@@ -1093,15 +1133,23 @@ function renderWeekly(tabs) {
 function renderWkDeptBlock(dept, days, td) {
   let body = `${renderWkHdRow(days, td)}`;
   for (const child of (dept.children||[])) {
-    if (!child.members?.length) continue;
+    const childAll = [...(child.members||[]), ...(child.children||[]).flatMap(gc => gc.members||[])];
+    if (!childAll.length) continue;
     body += `<div class="wk-tm-hd">▸ ${child.name}</div>`;
-    body += child.members.map(m => renderWkMemberRow(m, days, td)).join('');
+    body += (child.members||[]).map(m => renderWkMemberRow(m, days, td)).join('');
+    for (const gc of (child.children||[])) {
+      if (!gc.members?.length) continue;
+      body += `<div class="wk-tm-hd" style="padding-left:28px">└ ${gc.name}</div>`;
+      body += gc.members.map(m => renderWkMemberRow(m, days, td)).join('');
+    }
   }
   for (const m of (dept.direct_members||[])) {
     body += renderWkMemberRow(m, days, td);
   }
-  const allM = [...(dept.children||[]).flatMap(c=>c.members||[]), ...(dept.direct_members||[])];
-
+  const allM = [
+    ...(dept.children||[]).flatMap(c => [...(c.members||[]), ...(c.children||[]).flatMap(gc => gc.members||[])]),
+    ...(dept.direct_members||[])
+  ];
   return `<div class="wk-block">
     <div class="wk-dept-hd">
       <span class="wk-dept-nm">🏢 ${dept.name}</span>
@@ -1217,12 +1265,18 @@ function renderMembersV() {
   if (!S.members) { fetchMembers().then(render); return `<div class="spin-wrap"><div class="spinner"></div></div>`; }
 
   const gOptItems = [`<option value="">（未分類）</option>`];
-  const topGs  = S.groups.filter(g => !g.parent_id);
-  const childGs = S.groups.filter(g =>  g.parent_id);
+  const topGs = S.groups.filter(g => !g.parent_id);
+  const topIds = new Set(topGs.map(g => g.id));
+  const l2Gs  = S.groups.filter(g => g.parent_id && topIds.has(g.parent_id));
+  const l2Ids = new Set(l2Gs.map(g => g.id));
+  const l3Gs  = S.groups.filter(g => g.parent_id && l2Ids.has(g.parent_id));
   for (const top of topGs) {
     gOptItems.push(`<option value="${top.id}">${top.name}</option>`);
-    for (const child of childGs.filter(c => c.parent_id === top.id)) {
-      gOptItems.push(`<option value="${child.id}">　└ ${child.name}</option>`);
+    for (const l2 of l2Gs.filter(c => c.parent_id === top.id)) {
+      gOptItems.push(`<option value="${l2.id}">　└ ${l2.name}</option>`);
+      for (const l3 of l3Gs.filter(c => c.parent_id === l2.id)) {
+        gOptItems.push(`<option value="${l3.id}">　　└ ${l3.name}</option>`);
+      }
     }
   }
   const gOpts = gOptItems.join('');
@@ -1259,42 +1313,69 @@ function renderMembersV() {
 function renderGroupsV() {
   if (!S.groups) { fetchGroups().then(render); return `<div class="spin-wrap"><div class="spinner"></div></div>`; }
   const tops = S.groups.filter(g => !g.parent_id);
-  const kids = S.groups.filter(g =>  g.parent_id);
+  const topIds = new Set(tops.map(g => g.id));
+  const l2s = S.groups.filter(g => g.parent_id && topIds.has(g.parent_id));
+  const l2Ids = new Set(l2s.map(g => g.id));
+  const l3s = S.groups.filter(g => g.parent_id && l2Ids.has(g.parent_id));
+
   const rows = tops.map(top => {
-    const ch = kids.filter(c => c.parent_id === top.id);
+    const ch = l2s.filter(c => c.parent_id === top.id);
     return `<div class="cr" style="flex-wrap:wrap">
       <div style="flex:1;min-width:0">
         <div class="cr-lbl">🏢 ${top.name} <span style="font-weight:500;font-size:12px;color:var(--c-t3)">${top.member_count}名</span></div>
-        ${ch.map(c => `<div style="margin-top:6px;padding-left:14px;display:flex;align-items:center;gap:10px;font-size:13px">
-          <span class="t-3">└</span><span>${c.name}</span>
-          <span style="font-size:12px;color:var(--c-t3)">${c.member_count}名</span>
-          <button class="btn btn-sec btn-sm" onclick="delG(${c.id},'${c.name}')">削除</button>
-        </div>`).join('')}
+        ${ch.map(c => {
+          const gcs = l3s.filter(gc => gc.parent_id === c.id);
+          return `<div style="margin-top:6px;padding-left:14px">
+            <div style="display:flex;align-items:center;gap:10px;font-size:13px">
+              <span class="t-3">└</span><span>${c.name}</span>
+              <span style="font-size:12px;color:var(--c-t3)">${c.member_count}名</span>
+              <button class="btn btn-sec btn-sm" onclick="delG(${c.id},'${c.name}')">削除</button>
+            </div>
+            ${gcs.map(gc => `<div style="margin-top:4px;padding-left:20px;display:flex;align-items:center;gap:10px;font-size:12px">
+              <span class="t-3">└</span><span>${gc.name}</span>
+              <span style="font-size:11px;color:var(--c-t3)">${gc.member_count}名</span>
+              <button class="btn btn-sec btn-sm" onclick="delG(${gc.id},'${gc.name}')">削除</button>
+            </div>`).join('')}
+          </div>`;
+        }).join('')}
       </div>
       <button class="btn btn-sec btn-sm" onclick="delG(${top.id},'${top.name}')">削除</button>
     </div>`;
   }).join('');
 
   const topOpts = tops.map(g => `<option value="${g.id}">${g.name}</option>`).join('');
-  return `<div class="topbar"><div class="tb-left"><div class="tb-title">グループ管理</div><div class="tb-sub">部署（第1階層）とチーム（第2階層）</div></div></div>
+  const l2Opts = l2s.map(g => {
+    const pName = tops.find(t => t.id === g.parent_id)?.name || '';
+    return `<option value="${g.id}">${pName} › ${g.name}</option>`;
+  }).join('');
+
+  return `<div class="topbar"><div class="tb-left"><div class="tb-title">グループ管理</div><div class="tb-sub">本部（第1階層）・部署（第2階層）・チーム（第3階層）</div></div></div>
   <div class="sec"><div class="sec-ttl">グループ一覧</div>
     <div class="card">${rows||'<div style="padding:18px;color:var(--c-t4)">グループなし</div>'}</div>
   </div>
   <div class="sec"><div class="sec-ttl">追加</div>
     <div class="card">
       <div class="cr">
-        <div><div class="cr-lbl">部署（第1階層）</div><div class="cr-desc">例: 営業部, 開発部</div></div>
+        <div><div class="cr-lbl">本部（第1階層）</div><div class="cr-desc">例: ビジネス本部, コーポレート本部</div></div>
         <div class="cr-ctrl">
-          <input class="inp" id="g-d-nm" placeholder="部署名" style="width:138px">
+          <input class="inp" id="g-d-nm" placeholder="本部名" style="width:138px">
           <button class="btn btn-pri" onclick="addDept()">追加</button>
         </div>
       </div>
       <div class="cr">
-        <div><div class="cr-lbl">チーム（第2階層）</div><div class="cr-desc">例: ISM, バックエンド</div></div>
+        <div><div class="cr-lbl">部署（第2階層）</div><div class="cr-desc">例: 営業部, 開発部</div></div>
         <div class="cr-ctrl">
           <select class="inp" id="g-t-par" style="width:116px"><option value="">親グループ</option>${topOpts}</select>
-          <input class="inp" id="g-t-nm" placeholder="チーム名" style="width:118px">
+          <input class="inp" id="g-t-nm" placeholder="部署名" style="width:118px">
           <button class="btn btn-pri" onclick="addTeam()">追加</button>
+        </div>
+      </div>
+      <div class="cr">
+        <div><div class="cr-lbl">チーム（第3階層）</div><div class="cr-desc">例: ISM, エンジニアリング</div></div>
+        <div class="cr-ctrl">
+          <select class="inp" id="g-s-par" style="width:150px"><option value="">親部署</option>${l2Opts}</select>
+          <input class="inp" id="g-s-nm" placeholder="チーム名" style="width:100px">
+          <button class="btn btn-pri" onclick="addSubTeam()">追加</button>
         </div>
       </div>
     </div>
@@ -1492,7 +1573,16 @@ async function addDept() {
 async function addTeam() {
   const name = document.getElementById('g-t-nm')?.value.trim();
   const pid  = parseInt(document.getElementById('g-t-par')?.value);
-  if (!name || !pid) { toast('チーム名と親グループを選択してください', 'err'); return; }
+  if (!name || !pid) { toast('部署名と親グループを選択してください', 'err'); return; }
+  const r = await api('POST', '/api/groups', { name, parent_id: pid });
+  if (r.ok) { toast(`✅ "${name}" を追加`, 'ok'); S.groups = null; await fetchGroups(); render(); }
+  else toast(`❌ ${r.error}`, 'err');
+}
+
+async function addSubTeam() {
+  const name = document.getElementById('g-s-nm')?.value.trim();
+  const pid  = parseInt(document.getElementById('g-s-par')?.value);
+  if (!name || !pid) { toast('チーム名と親部署を選択してください', 'err'); return; }
   const r = await api('POST', '/api/groups', { name, parent_id: pid });
   if (r.ok) { toast(`✅ "${name}" を追加`, 'ok'); S.groups = null; await fetchGroups(); render(); }
   else toast(`❌ ${r.error}`, 'err');

@@ -208,8 +208,13 @@ function createServer() {
         let group = null;
         if (member.group_id && groupMap[member.group_id]) {
           const g = groupMap[member.group_id];
-          const parent = g.parent_id ? groupMap[g.parent_id] : null;
-          group = { id: g.id, name: g.name, parent: parent ? { id: parent.id, name: parent.name } : null };
+          let parent = null;
+          if (g.parent_id && groupMap[g.parent_id]) {
+            const p = groupMap[g.parent_id];
+            const gp = p.parent_id && groupMap[p.parent_id] ? { id: groupMap[p.parent_id].id, name: groupMap[p.parent_id].name, parent: null } : null;
+            parent = { id: p.id, name: p.name, parent: gp };
+          }
+          group = { id: g.id, name: g.name, parent };
         }
         const signal = calcSig(check);
         return {
@@ -238,10 +243,17 @@ function createServer() {
 
       const topGroups = allGroups.filter(g => !g.parent_id);
       const groupTree = topGroups.map(top => {
-        const children = allGroups.filter(g => g.parent_id === top.id).map(child => ({
-          id: child.id, name: child.name,
-          members: enriched.filter(m => m.user.group?.id === child.id),
-        }));
+        const children = allGroups.filter(g => g.parent_id === top.id).map(child => {
+          const grandchildren = allGroups.filter(g => g.parent_id === child.id).map(gc => ({
+            id: gc.id, name: gc.name,
+            members: enriched.filter(m => m.user.group?.id === gc.id),
+          }));
+          return {
+            id: child.id, name: child.name,
+            children: grandchildren,
+            members: enriched.filter(m => m.user.group?.id === child.id),
+          };
+        });
         return { id: top.id, name: top.name, children, direct_members: enriched.filter(m => m.user.group?.id === top.id) };
       });
 
@@ -379,8 +391,13 @@ function createServer() {
         let group = null;
         if (member.group_id && groupMap[member.group_id]) {
           const g = groupMap[member.group_id];
-          const parent = g.parent_id ? groupMap[g.parent_id] : null;
-          group = { id: g.id, name: g.name, parent: parent ? { id: parent.id, name: parent.name } : null };
+          let parent = null;
+          if (g.parent_id && groupMap[g.parent_id]) {
+            const p = groupMap[g.parent_id];
+            const gp = p.parent_id && groupMap[p.parent_id] ? { id: groupMap[p.parent_id].id, name: groupMap[p.parent_id].name, parent: null } : null;
+            parent = { id: p.id, name: p.name, parent: gp };
+          }
+          group = { id: g.id, name: g.name, parent };
         }
         const dayData = {};
         for (const day of days) {
@@ -405,11 +422,20 @@ function createServer() {
       });
 
       const topGroups = allGroups.filter(g => !g.parent_id);
-      const groupTree = topGroups.map(top => ({
-        id: top.id, name: top.name,
-        children: allGroups.filter(g => g.parent_id === top.id).map(c => ({ id: c.id, name: c.name, members: enriched.filter(m => m.user.group?.id === c.id) })),
-        direct_members: enriched.filter(m => m.user.group?.id === top.id),
-      }));
+      const groupTree = topGroups.map(top => {
+        const children = allGroups.filter(g => g.parent_id === top.id).map(child => {
+          const grandchildren = allGroups.filter(g => g.parent_id === child.id).map(gc => ({
+            id: gc.id, name: gc.name,
+            members: enriched.filter(m => m.user.group?.id === gc.id),
+          }));
+          return {
+            id: child.id, name: child.name,
+            children: grandchildren,
+            members: enriched.filter(m => m.user.group?.id === child.id),
+          };
+        });
+        return { id: top.id, name: top.name, children, direct_members: enriched.filter(m => m.user.group?.id === top.id) };
+      });
 
       let totalExpected = 0, totalPosted = 0, totalFlagged = 0;
       for (const m of enriched) for (const day of days) {
@@ -510,7 +536,10 @@ function createServer() {
     if (!name) return res.status(400).json({ ok: false, error: 'name is required' });
     if (parent_id) {
       const parent = db.getGroup(parent_id);
-      if (parent?.parent_id) return res.status(400).json({ ok: false, error: '階層は2段まで' });
+      if (parent?.parent_id) {
+        const grandparent = db.getGroup(parent.parent_id);
+        if (grandparent?.parent_id) return res.status(400).json({ ok: false, error: '階層は3段まで' });
+      }
     }
     try {
       const result = db.createGroup(name, parent_id || null);
