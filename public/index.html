@@ -1181,13 +1181,27 @@ function renderMR(m, cfg) {
   // サマリー: Claude生成サマリー > 日報テキストの先頭60字
   const rawText = report?.text ? report.text.replace(/\s+/g, ' ').trim() : '';
   const textPreview = rawText.length > 60 ? rawText.slice(0, 60) + '…' : rawText;
-  const summary = check.sentiment_summary || textPreview || null;
+  const summary      = check.sentiment_summary || textPreview || null;
+  const praisePoints = check.praise_points || null;
+  const followPoints = check.follow_points  || null;
+
+  const praiseHtml = praisePoints
+    ? `<div style="display:flex;gap:4px;align-items:flex-start;margin-top:3px">
+        <span style="font-size:10px;flex-shrink:0;margin-top:1px;color:#16a34a;font-weight:800">👏</span>
+        <span style="font-size:11px;color:#15803d;line-height:1.5">${praisePoints}</span>
+       </div>` : '';
+  const followHtml = followPoints
+    ? `<div style="display:flex;gap:4px;align-items:flex-start;margin-top:3px">
+        <span style="font-size:10px;flex-shrink:0;margin-top:1px;color:#b45309;font-weight:800">🔍</span>
+        <span style="font-size:11px;color:#92400e;line-height:1.5">${followPoints}</span>
+       </div>` : '';
 
   return `<div class="mr ${signalRow(sig)}">
     <div class="dot ${signalDot(sig)}"></div>
     <div style="min-width:0">
       <div class="mr-name">${name}</div>
       ${summary ? `<div class="mr-summary">${summary}</div>` : ''}
+      ${praiseHtml}${followHtml}
       <div class="mr-meta">${report ? `${report.char_count}字` : ''}${subFlags ? ' ' + subFlags : ''}</div>
     </div>
     <div>${tHtml}</div>

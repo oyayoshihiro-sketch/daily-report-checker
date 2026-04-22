@@ -127,7 +127,7 @@ async function checkMember(member, date) {
       userId: member.user_id, checkDate: date, posted: 0,
       lateNightFlag: 0, latePostFlag: 0, sentimentFlag: 0, sentimentScore: null,
       volumeFlag: 0, volumeRatio: null, flagCount: 0,
-      signal: null, sentimentSummary: null,
+      signal: null, sentimentSummary: null, praisePoints: null, followPoints: null,
     });
     return;
   }
@@ -135,13 +135,15 @@ async function checkMember(member, date) {
   const lateNightFlag = calcLateNightFlag(report.posted_hour);
   const latePostFlag  = calcLatePostFlag(report.posted_hour);
 
-  let sentimentFlag = 0, sentimentScore = null, sentimentSummary = null;
+  let sentimentFlag = 0, sentimentScore = null, sentimentSummary = null, praisePoints = null, followPoints = null;
   try {
     const prevCheck   = db.getLatestCheck(member.user_id);
     const prevScore   = prevCheck && prevCheck.check_date !== date ? prevCheck.sentiment_score : null;
     const r = await analyzeReport(report.text, prevScore);
     sentimentScore   = r.score;
     sentimentSummary = r.summary || null;
+    praisePoints     = r.praise || null;
+    followPoints     = r.follow || null;
     sentimentFlag    = r.score < cfg.get('sentiment_threshold') ? 1 : 0;
   } catch (e) {
     console.error('[checker] sentiment error:', e.message);
@@ -165,7 +167,7 @@ async function checkMember(member, date) {
     userId: member.user_id, checkDate: date, posted: 1,
     lateNightFlag, latePostFlag, sentimentFlag, sentimentScore,
     volumeFlag, volumeRatio, flagCount,
-    signal, sentimentSummary,
+    signal, sentimentSummary, praisePoints, followPoints,
   });
 }
 

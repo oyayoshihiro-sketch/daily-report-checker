@@ -108,12 +108,14 @@ function initTables() {
     );
   `);
 
-  // condition_checks に signal / sentiment_summary / late_post_flag 列を追加（マイグレーション）
+  // condition_checks カラム追加（マイグレーション）
   try {
     const ccCols = _db.prepare('PRAGMA table_info(condition_checks)').all().map(c => c.name);
     if (!ccCols.includes('signal'))            _db.exec("ALTER TABLE condition_checks ADD COLUMN signal TEXT");
     if (!ccCols.includes('sentiment_summary')) _db.exec("ALTER TABLE condition_checks ADD COLUMN sentiment_summary TEXT");
     if (!ccCols.includes('late_post_flag'))    _db.exec("ALTER TABLE condition_checks ADD COLUMN late_post_flag INTEGER NOT NULL DEFAULT 0");
+    if (!ccCols.includes('praise_points'))     _db.exec("ALTER TABLE condition_checks ADD COLUMN praise_points TEXT");
+    if (!ccCols.includes('follow_points'))     _db.exec("ALTER TABLE condition_checks ADD COLUMN follow_points TEXT");
   } catch (e) {
     console.error('[db] condition_checks migration error:', e.message);
   }
@@ -306,10 +308,13 @@ JSONのみ返すこと。前置き・説明・コードブロック記号（\`\`
 {
   "score": 0.00,
   "label": "GREEN",
-  "summary": "100字以内。断定せず観察として記述。繁忙期等のコンテキストがあれば加味する。"
+  "summary": "100字以内。断定せず観察として記述。繁忙期等のコンテキストがあれば加味する。",
+  "praise": "褒めポイント。具体的な成果や前向きな姿勢をもとに、マネージャーが声かけする際に使える表現で1〜2文。",
+  "follow": "フォローポイント。懸念点や気になる点があれば1〜2文。特になければnull。"
 }
 
-labelの値は GREEN / YELLOW / ORANGE / RED / CRITICAL のいずれか。`;
+labelの値は GREEN / YELLOW / ORANGE / RED / CRITICAL のいずれか。
+praiseは必ず記述すること。followは懸念がない場合はnullとすること。`;
 
 const DEFAULT_CONFIG = [
   { key: 'late_night_hour',         value: '22',          description: '深夜フラグの閾値（この時間以降=深夜, 0-23 JST）' },
@@ -329,11 +334,11 @@ function seedConfig() {
   for (const c of DEFAULT_CONFIG) {
     stmt.run(c.key, c.value, c.description);
   }
-  // 旧プロンプト（{DAILY_REPORT_TEXT} を含まない、または "summary" フィールドがない）を新デフォルトに自動アップグレード
+  // 旧プロンプト（必須フィールドが不足）を新デフォルトに自動アップグレード
   const cur = _db.prepare("SELECT value FROM config WHERE key = 'sentiment_prompt'").get();
-  if (cur && (!cur.value.includes('{DAILY_REPORT_TEXT}') || !cur.value.includes('"summary"'))) {
+  if (cur && (!cur.value.includes('{DAILY_REPORT_TEXT}') || !cur.value.includes('"summary"') || !cur.value.includes('"praise"'))) {
     _db.prepare("UPDATE config SET value = ? WHERE key = 'sentiment_prompt'").run(SENTIMENT_PROMPT_DEFAULT);
-    console.log('[db] sentiment_prompt を新デフォルトにアップグレードしました（summary フィールド追加）');
+    console.log('[db] sentiment_prompt を新デフォルトにアップグレードしました（praise/follow フィールド追加）');
   }
 }
 
@@ -375,10 +380,10 @@ function upsertCheck(data) {
   return getDb().prepare(`
     INSERT INTO condition_checks
       (user_id, check_date, posted, late_night_flag, late_post_flag, sentiment_flag, sentiment_score,
-       volume_flag, volume_ratio, flag_count, signal, sentiment_summary)
+       volume_flag, volume_ratio, flag_count, signal, sentiment_summary, praise_points, follow_points)
     VALUES
       (@userId, @checkDate, @posted, @lateNightFlag, @latePostFlag, @sentimentFlag, @sentimentScore,
-       @volumeFlag, @volumeRatio, @flagCount, @signal, @sentimentSummary)
+       @volumeFlag, @volumeRatio, @flagCount, @signal, @sentimentSummary, @praisePoints, @followPoints)
     ON CONFLICT(user_id, check_date) DO UPDATE SET
       posted             = excluded.posted,
       late_night_flag    = excluded.late_night_flag,
@@ -390,6 +395,8 @@ function upsertCheck(data) {
       flag_count         = excluded.flag_count,
       signal             = excluded.signal,
       sentiment_summary  = excluded.sentiment_summary,
+      praise_points      = excluded.praise_points,
+      follow_points      = excluded.follow_points,
       created_at         = datetime('now')
   `).run(data);
 }

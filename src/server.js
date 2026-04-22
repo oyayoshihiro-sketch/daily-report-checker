@@ -227,6 +227,8 @@ function createServer() {
             volume_ratio: check.volume_ratio, posted_at: check.posted_at,
             signal,
             sentiment_summary: check.sentiment_summary || null,
+            praise_points: check.praise_points || null,
+            follow_points: check.follow_points || null,
             composite: (check.late_night_flag||0) + (check.late_post_flag||0) + (check.sentiment_flag||0) + (check.volume_flag||0),
           } : null,
           report: report ? { char_count: report.char_count, posted_at: report.posted_at, text: report.text } : null,
