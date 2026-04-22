@@ -555,6 +555,117 @@ function createServer() {
     res.json({ ok: true });
   });
 
+  // ── バディくん チャット ──────────────────────────────────────────────────
+  server.post('/api/buddy/chat', async (req, res) => {
+    try {
+      const { message, history = [], date: queryDate } = req.body;
+      if (!message?.trim()) return res.status(400).json({ error: 'message is required' });
+
+      const date = queryDate || todayJst();
+      const allGroups  = db.getAllGroups();
+      const allMembers = db.getActiveMembers();
+      const groupMap   = Object.fromEntries(allGroups.map(g => [g.id, g]));
+      const checks     = db.getChecksForDate(date);
+      const checkMap   = Object.fromEntries(checks.map(c => [c.user_id, c]));
+
+      // 過去14日のチェック履歴（トレンド用）
+      const trendStart = new Date(date + 'T00:00:00Z');
+      trendStart.setUTCDate(trendStart.getUTCDate() - 13);
+      const pastChecks = db.getChecksForDateRange(trendStart.toISOString().slice(0, 10), date);
+      const memberTrends = {};
+      for (const c of pastChecks) {
+        if (!memberTrends[c.user_id]) memberTrends[c.user_id] = [];
+        memberTrends[c.user_id].push(c);
+      }
+
+      // グループパスを解決
+      const resolveGroup = id => {
+        if (!id || !groupMap[id]) return '未分類';
+        const g = groupMap[id];
+        const parts = [g.name];
+        if (g.parent_id && groupMap[g.parent_id]) {
+          parts.unshift(groupMap[g.parent_id].name);
+          const p = groupMap[g.parent_id];
+          if (p.parent_id && groupMap[p.parent_id]) parts.unshift(groupMap[p.parent_id].name);
+        }
+        return parts.join(' > ');
+      };
+
+      // メンバーごとにコンディション情報を構築
+      const memberLines = allMembers.map(m => {
+        const name  = m.display_name || m.real_name || m.user_id;
+        const group = resolveGroup(m.group_id);
+        const check = checkMap[m.user_id];
+
+        if (!check)         return `【${name}】(${group}): 本日未チェック`;
+        if (!check.posted)  return `【${name}】(${group}): 本日未投稿`;
+
+        const sig     = check.signal || '不明';
+        const score   = check.sentiment_score != null ? check.sentiment_score.toFixed(2) : '—';
+        const summary = check.sentiment_summary ? `「${check.sentiment_summary}」` : 'なし';
+        const flags   = [
+          check.late_night_flag >= 2 ? '深夜投稿(23〜5時)' : check.late_night_flag === 1 ? '夜間投稿(22時台)' : '',
+          check.late_post_flag ? '投稿遅れ(朝〜昼)' : '',
+          check.volume_flag ? `文量${check.volume_ratio < 1 ? '減少' : '増加'}(${Math.abs(Math.round((check.volume_ratio - 1) * 100))}%)` : '',
+        ].filter(Boolean).join(', ');
+
+        // 直近7日の推移（新→旧）
+        const trend = (memberTrends[m.user_id] || [])
+          .filter(c => c.posted && c.check_date !== date)
+          .sort((a, b) => b.check_date.localeCompare(a.check_date))
+          .slice(0, 7)
+          .map(c => c.signal === 'red' ? '🔴' : c.signal === 'yellow' ? '🟡' : '🟢')
+          .join('');
+
+        return `【${name}】(${group})
+  本日: 信号=${sig}, 感情スコア=${score}${flags ? ', フラグ=[' + flags + ']' : ''}
+  日報サマリー: ${summary}
+  直近7日推移: ${trend || 'データなし'}`;
+      });
+
+      const systemPrompt = `あなたは「バディくん」という名前のAIアシスタントです。
+日報チェッカーシステムのデータをもとに、マネージャーやリーダーがチームメンバーのコンディションを把握し、適切なフォローアップを行えるよう支援します。
+
+## 基本姿勢
+- 温かく親しみやすい口調で、でもプロフェッショナルに対応する
+- 感情スコアや日報サマリーはあくまで参考情報として扱い、「〜の傾向が見られます」「〜かもしれません」と観察として伝える
+- 具体的なメンバー名を挙げながら実践的なアドバイスをする
+- 1on1のアドバイスは具体的な質問例や話題を提案する
+- 回答は適切な長さにする（箇条書きを活用して読みやすく）
+
+## 今日のメンバーコンディション（${date}）
+
+${memberLines.join('\n\n')}
+
+## 凡例
+- 信号: 🟢緑=良好, 🟡黄=要注意, 🔴赤=要警戒
+- 感情スコア: 0.00〜1.00（高いほどポジティブ）
+  - 0.80以上: 良好、0.60〜0.79: やや注意、0.40〜0.59: 要観察、0.39以下: 要対応
+
+回答は日本語でお願いします。`;
+
+      const Anthropic = require('@anthropic-ai/sdk');
+      const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+      const messages = [
+        ...history.slice(-10).map(h => ({ role: h.role, content: h.content })),
+        { role: 'user', content: message.trim() }
+      ];
+
+      const response = await client.messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 900,
+        system: systemPrompt,
+        messages,
+      });
+
+      res.json({ ok: true, reply: response.content[0].text });
+    } catch (e) {
+      console.error('/api/buddy/chat error:', e);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
   // ── Dashboard Users ───────────────────────────────────────────────────────
   server.get('/api/users', requireAdmin, (req, res) => {
     res.json(db.getAllDashboardUsers());

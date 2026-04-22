@@ -431,6 +431,103 @@ select.inp { cursor: pointer; }
 .empty { text-align: center; padding: 56px 20px; color: var(--c-t3); }
 .empty-ico { font-size: 44px; margin-bottom: 14px; }
 .empty-ttl { font-size: 16px; font-weight: 800; color: var(--c-t2); margin-bottom: 6px; }
+
+/* ── バディくんチャット ── */
+.buddy-toggle-btn {
+  position: fixed; right: 0; top: 50%; transform: translateY(-50%);
+  background: linear-gradient(180deg,#16a34a,#15803d);
+  color: #fff; border: none; border-radius: 12px 0 0 12px;
+  padding: 14px 9px; cursor: pointer; z-index: 300;
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  box-shadow: -3px 0 14px rgba(0,0,0,.18); transition: background .15s;
+}
+.buddy-toggle-btn:hover { background: linear-gradient(180deg,#15803d,#166534); }
+.buddy-toggle-ico { font-size: 20px; }
+.buddy-toggle-txt { writing-mode: vertical-rl; font-size: 10.5px; font-weight: 800; letter-spacing: .08em; }
+.buddy-panel {
+  position: fixed; right: 0; top: 0; bottom: 0; width: 380px;
+  background: var(--c-sur); border-left: 1.5px solid var(--c-bdr2);
+  display: flex; flex-direction: column; z-index: 250;
+  transform: translateX(100%); transition: transform .28s cubic-bezier(.4,0,.2,1);
+  box-shadow: -6px 0 32px rgba(0,0,0,.13);
+}
+.buddy-panel.open { transform: translateX(0); }
+.buddy-hd {
+  display: flex; align-items: center; gap: 10px; padding: 15px 16px;
+  border-bottom: 1.5px solid var(--c-bdr2);
+  background: linear-gradient(135deg,#f0fdf4 0%,#fff 100%); flex-shrink: 0;
+}
+.buddy-avatar {
+  width: 40px; height: 40px; border-radius: 50%;
+  background: linear-gradient(135deg,#16a34a,#4ade80);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; flex-shrink: 0; box-shadow: 0 2px 8px rgba(22,163,74,.3);
+}
+.buddy-hd-info { flex: 1; min-width: 0; }
+.buddy-hd-name { font-size: 15px; font-weight: 800; color: var(--c-t1); }
+.buddy-hd-desc { font-size: 10.5px; color: var(--c-t3); }
+.buddy-close {
+  background: none; border: none; cursor: pointer; color: var(--c-t3);
+  font-size: 20px; padding: 4px 6px; border-radius: 6px; line-height: 1;
+}
+.buddy-close:hover { background: var(--c-bdr); color: var(--c-t1); }
+.buddy-suggestions {
+  display: flex; flex-wrap: wrap; gap: 5px; padding: 10px 12px;
+  border-bottom: 1px solid var(--c-bdr); flex-shrink: 0; background: #fafffe;
+}
+.buddy-chip {
+  background: var(--c-pri-s); color: var(--c-pri); border: 1px solid var(--c-bdr2);
+  border-radius: 100px; padding: 4px 11px; font-size: 11.5px; font-weight: 600;
+  cursor: pointer; white-space: nowrap; transition: background .12s;
+}
+.buddy-chip:hover { background: #bbf7d0; }
+.buddy-msgs {
+  flex: 1; overflow-y: auto; padding: 14px 12px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.buddy-msg { display: flex; gap: 8px; align-items: flex-start; }
+.buddy-msg.user { flex-direction: row-reverse; }
+.buddy-msg-ico {
+  width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 14px;
+}
+.buddy-msg.assistant .buddy-msg-ico { background: linear-gradient(135deg,#16a34a,#4ade80); }
+.buddy-msg.user .buddy-msg-ico { background: var(--c-bdr2); color: var(--c-t3); }
+.buddy-bubble {
+  max-width: 84%; padding: 9px 13px; font-size: 13px; line-height: 1.65;
+  white-space: pre-wrap; word-break: break-word;
+}
+.buddy-msg.assistant .buddy-bubble {
+  background: #f0fdf4; border: 1px solid var(--c-bdr2); color: var(--c-t1);
+  border-radius: 4px 14px 14px 14px;
+}
+.buddy-msg.user .buddy-bubble {
+  background: var(--c-pri); color: #fff;
+  border-radius: 14px 4px 14px 14px;
+}
+.buddy-typing { display: flex; gap: 5px; padding: 12px 16px; background: #f0fdf4; border: 1px solid var(--c-bdr2); border-radius: 4px 14px 14px 14px; width: fit-content; }
+.buddy-typing span { width: 8px; height: 8px; border-radius: 50%; background: var(--c-pri); animation: bdot 1.2s infinite; }
+.buddy-typing span:nth-child(2) { animation-delay: .2s; }
+.buddy-typing span:nth-child(3) { animation-delay: .4s; }
+@keyframes bdot { 0%,80%,100%{opacity:.2;transform:scale(.8)} 40%{opacity:1;transform:scale(1)} }
+.buddy-input-area {
+  padding: 10px 12px; border-top: 1.5px solid var(--c-bdr2);
+  display: flex; gap: 8px; align-items: flex-end; flex-shrink: 0;
+}
+.buddy-inp {
+  flex: 1; border: 1.5px solid var(--c-bdr2); border-radius: 10px;
+  padding: 9px 13px; font-size: 13px; outline: none; background: #fff;
+  color: var(--c-t1); resize: none; line-height: 1.45;
+  max-height: 110px; overflow-y: auto; font-family: inherit;
+}
+.buddy-inp:focus { border-color: var(--c-grn); }
+.buddy-send {
+  background: var(--c-pri); color: #fff; border: none; border-radius: 10px;
+  width: 38px; height: 38px; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; font-size: 16px; flex-shrink: 0; transition: background .12s;
+}
+.buddy-send:hover { background: var(--c-pri-h); }
+.buddy-send:disabled { background: var(--c-bdr2); cursor: not-allowed; }
 </style>
 </head>
 <body>
@@ -478,6 +575,42 @@ select.inp { cursor: pointer; }
   </main>
 </div>
 <div id="toast" class="toast"></div>
+
+<!-- バディくん トグルボタン -->
+<button class="buddy-toggle-btn" id="buddy-toggle-btn" onclick="toggleBuddy()" title="バディくんを開く">
+  <span class="buddy-toggle-ico">🤖</span>
+  <span class="buddy-toggle-txt">バディくん</span>
+</button>
+
+<!-- バディくん チャットパネル -->
+<div class="buddy-panel" id="buddy-panel">
+  <div class="buddy-hd">
+    <div class="buddy-avatar">🤖</div>
+    <div class="buddy-hd-info">
+      <div class="buddy-hd-name">バディくん</div>
+      <div class="buddy-hd-desc">日報データをもとにチームをサポート</div>
+    </div>
+    <button class="buddy-close" onclick="toggleBuddy()" title="閉じる">×</button>
+  </div>
+  <div class="buddy-suggestions">
+    <button class="buddy-chip" onclick="buddySuggest('疲れているメンバーはいますか？')">😰 疲れてる人は？</button>
+    <button class="buddy-chip" onclick="buddySuggest('フォローが必要なメンバーを教えてください')">💬 フォロー必要な人は？</button>
+    <button class="buddy-chip" onclick="buddySuggest('今日の1on1で特に話すべきメンバーと、どんな内容を話すといいか具体的に教えてください')">🗣️ 1on1アドバイス</button>
+    <button class="buddy-chip" onclick="buddySuggest('リーダー候補になりそうなメンバーはいますか？')">🌟 リーダー候補は？</button>
+    <button class="buddy-chip" onclick="buddySuggest('今日の組織全体のコンディションをまとめてください')">📊 今日のサマリー</button>
+    <button class="buddy-chip" onclick="buddySuggest('直近の傾向で気になるメンバーはいますか？')">📈 最近の傾向は？</button>
+  </div>
+  <div class="buddy-msgs" id="buddy-msgs">
+    <div class="buddy-msg assistant">
+      <div class="buddy-msg-ico">🤖</div>
+      <div class="buddy-bubble">こんにちは！バディくんです👋<br>日報データをもとに、チームのコンディションや1on1のアドバイスなど、なんでも聞いてください！</div>
+    </div>
+  </div>
+  <div class="buddy-input-area">
+    <textarea class="buddy-inp" id="buddy-inp" rows="1" placeholder="質問を入力..." onkeydown="buddyKeydown(event)" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
+    <button class="buddy-send" id="buddy-send" onclick="buddySend()" title="送信">➤</button>
+  </div>
+</div>
 
 <script>
 /* ════════════════════════════════════════
@@ -1879,6 +2012,94 @@ function fmtP(ratio) {
   if (ratio === null || ratio === undefined) return '—';
   const p = Math.round((ratio - 1) * 100);
   return p >= 0 ? `+${p}%` : `${p}%`;
+}
+
+/* ════════════════════════════════════════
+   バディくん チャット
+════════════════════════════════════════ */
+const BS = { open: false, loading: false, history: [] };
+
+function toggleBuddy() {
+  BS.open = !BS.open;
+  document.getElementById('buddy-panel').classList.toggle('open', BS.open);
+  document.getElementById('buddy-toggle-btn').style.display = BS.open ? 'none' : '';
+  if (BS.open) setTimeout(() => document.getElementById('buddy-inp')?.focus(), 300);
+}
+
+function buddyKeydown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); buddySend(); }
+}
+
+function buddySuggest(text) {
+  const inp = document.getElementById('buddy-inp');
+  if (inp) { inp.value = text; inp.style.height = 'auto'; inp.style.height = inp.scrollHeight + 'px'; }
+  buddySend();
+}
+
+async function buddySend() {
+  if (BS.loading) return;
+  const inp = document.getElementById('buddy-inp');
+  const msg = inp?.value.trim();
+  if (!msg) return;
+
+  inp.value = '';
+  inp.style.height = 'auto';
+  buddyAppendMsg('user', msg);
+  BS.history.push({ role: 'user', content: msg });
+
+  BS.loading = true;
+  document.getElementById('buddy-send').disabled = true;
+  const typingId = buddyShowTyping();
+
+  try {
+    const date = S.date || today();
+    const r = await api('POST', '/api/buddy/chat', { message: msg, history: BS.history.slice(-10), date });
+    buddyRemoveTyping(typingId);
+    if (r.ok) {
+      buddyAppendMsg('assistant', r.reply);
+      BS.history.push({ role: 'assistant', content: r.reply });
+    } else {
+      buddyAppendMsg('assistant', `エラー: ${r.error || '回答できませんでした'}`);
+    }
+  } catch (e) {
+    buddyRemoveTyping(typingId);
+    buddyAppendMsg('assistant', `通信エラーが発生しました`);
+  } finally {
+    BS.loading = false;
+    document.getElementById('buddy-send').disabled = false;
+  }
+}
+
+function buddyAppendMsg(role, text) {
+  const msgs = document.getElementById('buddy-msgs');
+  if (!msgs) return;
+  const ico = role === 'assistant' ? '🤖' : '👤';
+  const div = document.createElement('div');
+  div.className = `buddy-msg ${role}`;
+  div.innerHTML = `<div class="buddy-msg-ico">${ico}</div><div class="buddy-bubble">${escHtml(text)}</div>`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function escHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function buddyShowTyping() {
+  const msgs = document.getElementById('buddy-msgs');
+  if (!msgs) return null;
+  const id = 'bt-' + Date.now();
+  const div = document.createElement('div');
+  div.className = 'buddy-msg assistant';
+  div.id = id;
+  div.innerHTML = `<div class="buddy-msg-ico">🤖</div><div class="buddy-typing"><span></span><span></span><span></span></div>`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+  return id;
+}
+
+function buddyRemoveTyping(id) {
+  if (id) document.getElementById(id)?.remove();
 }
 
 /* ════════════════════════════════════════
