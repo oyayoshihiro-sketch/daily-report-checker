@@ -140,7 +140,8 @@ function createServer() {
   });
 
   server.post('/api/invitations/accept', async (req, res) => {
-    const { token, password } = req.body;
+    const { token, password, displayName } = req.body;
+    let   { email } = req.body;
     if (!token || !password) return res.status(400).json({ ok: false, error: 'トークンとパスワードが必要です' });
     if (password.length < 8) return res.status(400).json({ ok: false, error: 'パスワードは8文字以上で設定してください' });
 
@@ -148,17 +149,23 @@ function createServer() {
     if (!inv) return res.status(404).json({ ok: false, error: '無効な招待リンクです' });
     if (new Date(inv.expires_at) < new Date()) return res.status(410).json({ ok: false, error: '招待リンクの有効期限が切れています' });
 
+    // 招待にメールが設定済みならそちらを優先、なければリクエストのメールを使用
+    email = (inv.email || '').trim() || (email || '').trim();
+    if (!email) return res.status(400).json({ ok: false, error: 'メールアドレスが必要です' });
+
     try {
-      const existing = db.getDashboardUser(inv.email);
+      const existing = db.getDashboardUser(email);
       if (existing) {
-        // 既存ユーザーのパスワードを更新
-        db.updateDashboardUser(existing.id, { passwordHash: hashPassword(password) });
+        db.updateDashboardUser(existing.id, {
+          passwordHash: hashPassword(password),
+          ...(displayName ? { displayName } : {}),
+        });
         db.deleteInvitation(inv.id);
-        setSessionCookie(res, { id: existing.id, email: existing.email, role: existing.role, displayName: existing.display_name });
+        setSessionCookie(res, { id: existing.id, email: existing.email, role: existing.role, displayName: displayName || existing.display_name });
       } else {
-        const result = db.createDashboardUser(inv.email, hashPassword(password), inv.role);
+        const result = db.createDashboardUser(email, hashPassword(password), inv.role, displayName || null);
         db.deleteInvitation(inv.id);
-        setSessionCookie(res, { id: result.lastInsertRowid, email: inv.email, role: inv.role, displayName: null });
+        setSessionCookie(res, { id: result.lastInsertRowid, email, role: inv.role, displayName: displayName || null });
       }
       res.json({ ok: true });
     } catch (e) {
@@ -834,8 +841,8 @@ ${memberLines.join('\n\n')}
   });
 
   server.post('/api/invitations', requireAdmin, async (req, res) => {
-    const { email, role } = req.body;
-    if (!email) return res.status(400).json({ ok: false, error: 'メールアドレスが必要です' });
+    const email = (req.body.email || '').trim();   // 空可（URLのみ発行）
+    const { role } = req.body;
     if (!['admin', 'executive', 'member'].includes(role)) return res.status(400).json({ ok: false, error: 'role は admin / executive / member です' });
 
     const token = crypto.randomBytes(32).toString('hex');

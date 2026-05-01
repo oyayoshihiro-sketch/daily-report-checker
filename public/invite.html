@@ -3,26 +3,26 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>招待の承認 — 日報チェッカー</title>
+<title>アカウント登録 — 日報チェッカー</title>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
-               "Hiragino Sans", "Yu Gothic UI", Meiryo, sans-serif;
-  background: #f0fdf4;
-  min-height: 100vh;
+               "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", Meiryo, sans-serif;
+  background: #f0fdf4; min-height: 100vh;
   display: flex; align-items: center; justify-content: center;
   position: relative; overflow: hidden;
 }
 body::before {
-  content: '';
-  position: fixed; inset: 0;
+  content: ''; position: fixed; inset: 0;
   background:
     radial-gradient(ellipse 800px 600px at 20% 30%, rgba(34,197,94,.12) 0%, transparent 70%),
     radial-gradient(ellipse 600px 400px at 80% 70%, rgba(16,185,129,.08) 0%, transparent 70%);
   pointer-events: none;
 }
 .wrap { width: 100%; max-width: 440px; padding: 24px; position: relative; z-index: 1; }
+
+/* ── Card ── */
 .card {
   background: #fff; border-radius: 20px;
   box-shadow: 0 8px 40px rgba(22,163,74,.10), 0 2px 8px rgba(0,0,0,.06);
@@ -30,161 +30,325 @@ body::before {
 }
 .card-top {
   background: linear-gradient(135deg, #16a34a 0%, #0d9488 100%);
-  padding: 28px 32px 24px; text-align: center; position: relative;
+  padding: 22px 32px 18px; text-align: center;
 }
-.card-top::after {
-  content: ''; position: absolute; bottom: -1px; left: 0; right: 0;
-  height: 20px; background: #fff; border-radius: 20px 20px 0 0;
+.logo-icon { font-size: 26px; display: inline-block; margin-bottom: 5px; }
+.logo-text  { color: rgba(255,255,255,.95); font-size: 16px; font-weight: 800; }
+.logo-sub   { color: rgba(255,255,255,.6);  font-size: 11px; margin-top: 2px; }
+
+/* Step dots */
+.step-dots { display: flex; justify-content: center; gap: 7px; margin-top: 13px; }
+.dot {
+  height: 6px; border-radius: 3px; background: rgba(255,255,255,.3);
+  width: 6px; transition: width .3s ease, background .3s ease;
 }
-.logo-icon { font-size: 32px; display: inline-block; margin-bottom: 8px; }
-.logo-text { color: rgba(255,255,255,.95); font-size: 18px; font-weight: 800; }
-.logo-sub  { color: rgba(255,255,255,.7); font-size: 12px; margin-top: 3px; }
-.card-body { padding: 8px 32px 32px; }
-h1 { font-size: 16px; font-weight: 700; color: #111827; margin-bottom: 18px; text-align: center; }
-.invite-info {
+.dot.active { background: #fff; width: 18px; }
+
+/* ── Steps slider ── */
+.steps-outer { overflow: hidden; }
+.steps-inner {
+  display: flex;
+  transition: transform .38s cubic-bezier(.4,0,.2,1);
+  will-change: transform;
+}
+.step { min-width: 100%; flex-shrink: 0; padding: 26px 32px 30px; }
+
+/* ── Loading ── */
+.loading-wrap { text-align: center; padding: 36px 0; color: #6b7280; font-size: 13px; }
+.spinner {
+  width: 30px; height: 30px; border: 3px solid #dcfce7; border-top-color: #22c55e;
+  border-radius: 50%; animation: spin .75s linear infinite; margin: 0 auto 14px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Step 0: Welcome ── */
+.welcome-ico { font-size: 46px; text-align: center; margin-bottom: 10px; }
+.welcome-ttl {
+  font-size: 19px; font-weight: 900; color: #111827;
+  text-align: center; margin-bottom: 18px; letter-spacing: -.01em;
+}
+.role-card {
+  display: flex; align-items: center; gap: 14px;
   background: linear-gradient(135deg, #f0fdf4, #dcfce7);
-  border: 1.5px solid #bbf7d0; border-radius: 12px;
-  padding: 14px 18px; margin-bottom: 22px; text-align: center;
+  border: 1.5px solid #bbf7d0; border-radius: 14px;
+  padding: 14px 18px; margin-bottom: 18px;
 }
-.invite-info-lbl { font-size: 11px; font-weight: 700; color: #16a34a; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 6px; }
-.invite-email { font-size: 15px; font-weight: 700; color: #111827; }
-.invite-role { display: inline-block; margin-top: 6px; font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 100px; }
-.role-admin { background: #dcfce7; color: #166534; }
-.role-viewer { background: #f1f5f9; color: #475569; }
-.field { margin-bottom: 16px; }
-label { display: block; font-size: 12px; font-weight: 700; color: #374151; margin-bottom: 6px; letter-spacing: .04em; text-transform: uppercase; }
-.hint { font-size: 11.5px; color: #9ca3af; margin-top: 5px; }
+.role-card-ico  { font-size: 30px; flex-shrink: 0; }
+.role-card-name { font-size: 14px; font-weight: 800; color: #111827; }
+.role-card-sub  { font-size: 12px; color: #6b7280; margin-top: 3px; line-height: 1.4; }
+.welcome-desc {
+  font-size: 13px; color: #6b7280; text-align: center; line-height: 1.6; margin-bottom: 22px;
+}
+
+/* ── Step 1: Form ── */
+.form-ttl { font-size: 17px; font-weight: 800; color: #111827; margin-bottom: 16px; }
+.field { margin-bottom: 13px; }
+label {
+  display: block; font-size: 10.5px; font-weight: 700;
+  color: #374151; margin-bottom: 5px; letter-spacing: .05em; text-transform: uppercase;
+}
+label .opt { font-weight: 400; color: #9ca3af; margin-left: 5px; text-transform: none; letter-spacing: 0; }
 input {
-  width: 100%; padding: 11px 14px;
+  width: 100%; padding: 10px 13px;
   border: 1.5px solid #d1fae5; border-radius: 10px;
   font-size: 14px; color: #111827; background: #f9fffe;
   outline: none; transition: border-color .15s, box-shadow .15s; font-family: inherit;
 }
-input:focus { border-color: #22c55e; box-shadow: 0 0 0 3px rgba(34,197,94,.15); background: #fff; }
+input:focus { border-color: #22c55e; box-shadow: 0 0 0 3px rgba(34,197,94,.12); background: #fff; }
 input::placeholder { color: #9ca3af; }
+input[readonly] { background: #f0fdf4; color: #374151; cursor: default; border-color: #bbf7d0; }
+.hint { font-size: 11px; color: #9ca3af; margin-top: 4px; }
+.err {
+  background: #fef2f2; border: 1.5px solid #fca5a5; border-radius: 10px;
+  color: #dc2626; font-size: 13px; padding: 10px 14px; margin-bottom: 12px; display: none;
+}
+.err.on { display: block; }
+
+/* ── Buttons ── */
 .btn {
-  width: 100%; padding: 13px;
+  width: 100%; padding: 12px;
   background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
   color: #fff; border: none; border-radius: 10px;
-  font-size: 15px; font-weight: 700; cursor: pointer;
-  transition: opacity .15s, transform .1s; font-family: inherit; margin-top: 6px;
-  box-shadow: 0 4px 14px rgba(22,163,74,.35);
+  font-size: 15px; font-weight: 700; cursor: pointer; font-family: inherit;
+  transition: opacity .15s, transform .1s;
+  box-shadow: 0 4px 14px rgba(22,163,74,.28);
 }
 .btn:hover:not(:disabled) { opacity: .9; transform: translateY(-1px); }
-.btn:disabled { opacity: .6; cursor: not-allowed; transform: none; }
-.err { background: #fef2f2; border: 1.5px solid #fca5a5; border-radius: 10px; color: #dc2626; font-size: 13px; padding: 10px 14px; margin-bottom: 16px; display: none; }
-.err.on { display: block; }
-.state { text-align: center; display: none; padding: 10px 0 8px; }
-.state.on { display: block; }
-.state-ico { font-size: 52px; margin-bottom: 14px; }
-.state-ttl { font-size: 18px; font-weight: 800; margin-bottom: 8px; color: #111827; }
-.state-sub { font-size: 13px; color: #6b7280; }
-#loading { text-align: center; padding: 24px; color: #6b7280; font-size: 13px; }
-#main-form { display: none; }
+.btn:active:not(:disabled) { transform: translateY(0); }
+.btn:disabled { opacity: .55; cursor: not-allowed; transform: none; }
+.btn-back {
+  width: 100%; padding: 9px; margin-top: 7px;
+  background: transparent; color: #9ca3af; border: none;
+  font-size: 13px; cursor: pointer; font-family: inherit; transition: color .15s;
+}
+.btn-back:hover { color: #374151; }
+
+/* ── Step 2: Success ── */
+.ok-wrap { text-align: center; }
+.ok-ico {
+  font-size: 54px; margin-bottom: 12px;
+  display: inline-block; animation: popIn .5s cubic-bezier(.34,1.56,.64,1) both;
+}
+@keyframes popIn { from { transform: scale(.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.ok-ttl  { font-size: 22px; font-weight: 900; color: #111827; margin-bottom: 6px; }
+.ok-name { font-size: 14px; color: #6b7280; margin-bottom: 22px; line-height: 1.5; }
+.ok-bar-wrap { background: #f0fdf4; border-radius: 6px; height: 5px; overflow: hidden; margin-bottom: 8px; }
+.ok-bar-fill {
+  height: 100%; width: 0%; border-radius: 6px;
+  background: linear-gradient(90deg, #22c55e, #16a34a);
+  transition: width 2s linear;
+}
+.ok-redirect { font-size: 12px; color: #9ca3af; }
+
+/* ── Error card ── */
+.ng-wrap { text-align: center; padding: 32px; }
+.ng-ico { font-size: 42px; margin-bottom: 12px; }
+.ng-ttl { font-size: 15px; font-weight: 700; color: #dc2626; margin-bottom: 14px; line-height: 1.5; }
+.ng-lnk { color: #16a34a; font-weight: 600; text-decoration: none; font-size: 14px; }
+.ng-lnk:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="card">
+
+  <!-- Loading card -->
+  <div id="card-loading" class="card">
     <div class="card-top">
       <div class="logo-icon">🌱</div>
       <div class="logo-text">日報チェッカー</div>
       <div class="logo-sub">Daily Report Checker</div>
     </div>
-    <div class="card-body">
-      <div id="loading">招待を確認中...</div>
-
-      <div id="main-form">
-        <h1>パスワードを設定してください</h1>
-        <div id="invite-info" class="invite-info">
-          <div class="invite-info-lbl">招待されたアカウント</div>
-          <div id="inv-email" class="invite-email"></div>
-          <div id="inv-role"  class="invite-role"></div>
-        </div>
-        <div id="err" class="err"></div>
-        <form id="form" onsubmit="doAccept(event)">
-          <div class="field">
-            <label for="pass">パスワード</label>
-            <input id="pass" type="password" placeholder="8文字以上" autocomplete="new-password" required minlength="8">
-            <div class="hint">8文字以上で設定してください</div>
-          </div>
-          <div class="field">
-            <label for="pass2">パスワード（確認）</label>
-            <input id="pass2" type="password" placeholder="もう一度入力" autocomplete="new-password" required minlength="8">
-          </div>
-          <button class="btn" id="btn" type="submit">設定してログイン →</button>
-        </form>
-      </div>
-
-      <div id="ok-state" class="state">
-        <div class="state-ico">✅</div>
-        <div class="state-ttl">設定完了！</div>
-        <div class="state-sub">ダッシュボードへ移動します...</div>
-      </div>
-
-      <div id="ng-state" class="state">
-        <div class="state-ico">🔗</div>
-        <div id="ng-msg" class="state-ttl" style="font-size:15px;color:#dc2626"></div>
-        <div class="state-sub" style="margin-top:10px">
-          <a href="/login.html" style="color:#16a34a;font-weight:600">ログインページへ戻る →</a>
-        </div>
-      </div>
+    <div class="loading-wrap">
+      <div class="spinner"></div>
+      招待リンクを確認中...
     </div>
   </div>
-</div>
-<script>
-const params = new URLSearchParams(location.search);
-const token  = params.get('token');
 
+  <!-- Error card -->
+  <div id="card-ng" class="card" style="display:none">
+    <div class="card-top">
+      <div class="logo-icon">🌱</div>
+      <div class="logo-text">日報チェッカー</div>
+      <div class="logo-sub">Daily Report Checker</div>
+    </div>
+    <div class="ng-wrap">
+      <div class="ng-ico">🔗</div>
+      <div id="ng-msg" class="ng-ttl"></div>
+      <a href="/login.html" class="ng-lnk">ログインページへ戻る →</a>
+    </div>
+  </div>
+
+  <!-- Main steps card -->
+  <div id="card-main" class="card" style="display:none">
+    <div class="card-top">
+      <div class="logo-icon">🌱</div>
+      <div class="logo-text">日報チェッカー</div>
+      <div class="logo-sub">Daily Report Checker</div>
+      <div class="step-dots">
+        <div class="dot active" id="dot-0"></div>
+        <div class="dot"        id="dot-1"></div>
+        <div class="dot"        id="dot-2"></div>
+      </div>
+    </div>
+
+    <div class="steps-outer">
+      <div class="steps-inner" id="steps-inner">
+
+        <!-- ── Step 0: Welcome ── -->
+        <div class="step" id="step-0">
+          <div class="welcome-ico">👋</div>
+          <div class="welcome-ttl">招待が届いています</div>
+          <div class="role-card">
+            <div class="role-card-ico" id="rc-ico">📋</div>
+            <div>
+              <div class="role-card-name" id="rc-name">—</div>
+              <div class="role-card-sub"  id="rc-sub">—</div>
+            </div>
+          </div>
+          <p class="welcome-desc">日報チェッカーに招待されました。<br>アカウントを作成して参加しましょう。</p>
+          <button class="btn" onclick="goStep(1)">はじめる &nbsp;&rarr;</button>
+        </div>
+
+        <!-- ── Step 1: Register ── -->
+        <div class="step" id="step-1">
+          <div class="form-ttl">アカウントを作成</div>
+          <div id="form-err" class="err"></div>
+          <form id="reg-form" onsubmit="doAccept(event)">
+            <div id="email-field" class="field">
+              <label>メールアドレス</label>
+              <input id="inp-email" type="email" placeholder="you@example.com" autocomplete="email">
+            </div>
+            <div class="field">
+              <label>表示名<span class="opt">（任意）</span></label>
+              <input id="inp-name" type="text" placeholder="山田 太郎" autocomplete="name">
+            </div>
+            <div class="field">
+              <label>パスワード</label>
+              <input id="inp-pass" type="password" placeholder="8文字以上" autocomplete="new-password" required minlength="8">
+              <div class="hint">半角英数字を含む 8 文字以上</div>
+            </div>
+            <div class="field" style="margin-bottom:18px">
+              <label>パスワード（確認）</label>
+              <input id="inp-pass2" type="password" placeholder="もう一度入力" autocomplete="new-password" required minlength="8">
+            </div>
+            <button class="btn" id="btn-submit" type="submit">アカウントを作成 &nbsp;&rarr;</button>
+          </form>
+          <button class="btn-back" onclick="goStep(0)">← 戻る</button>
+        </div>
+
+        <!-- ── Step 2: Success ── -->
+        <div class="step" id="step-2">
+          <div class="ok-wrap">
+            <div class="ok-ico">🎉</div>
+            <div class="ok-ttl">登録完了！</div>
+            <div class="ok-name" id="ok-name">ようこそ！</div>
+            <div class="ok-bar-wrap">
+              <div class="ok-bar-fill" id="ok-bar"></div>
+            </div>
+            <div class="ok-redirect">ダッシュボードへ移動します...</div>
+          </div>
+        </div>
+
+      </div><!-- /steps-inner -->
+    </div><!-- /steps-outer -->
+  </div><!-- /card-main -->
+
+</div><!-- /wrap -->
+<script>
+const params  = new URLSearchParams(location.search);
+const token   = params.get('token');
+let   invData = null;
+
+const ROLE_INFO = {
+  admin:     { ico: '⚙️',  name: '管理者として招待', sub: 'すべての機能にアクセスできます' },
+  executive: { ico: '📊',  name: '幹部として招待',   sub: 'ダッシュボードと勝ち負けBoardを閲覧できます' },
+  member:    { ico: '👤',  name: 'メンバーとして招待', sub: '勝ち負けBoardを閲覧できます' },
+};
+
+/* ── ステップ移動 ── */
+function goStep(n) {
+  document.getElementById('steps-inner').style.transform = `translateX(-${n * 100}%)`;
+  [0, 1, 2].forEach(i => {
+    document.getElementById(`dot-${i}`).classList.toggle('active', i <= n);
+  });
+}
+
+/* ── 初期化：トークン検証 ── */
 async function init() {
-  if (!token) return showError('招待トークンが見つかりません');
+  if (!token) return showNg('招待リンクが見つかりません');
   try {
     const res  = await fetch(`/api/invitations/verify?token=${encodeURIComponent(token)}`);
     const data = await res.json();
-    if (!data.ok) return showError(data.error);
-    document.getElementById('inv-email').textContent = data.email;
-    const roleEl = document.getElementById('inv-role');
-    roleEl.textContent = data.role === 'admin' ? '管理者' : '閲覧者';
-    roleEl.className   = `invite-role ${data.role === 'admin' ? 'role-admin' : 'role-viewer'}`;
-    document.getElementById('loading').style.display    = 'none';
-    document.getElementById('main-form').style.display  = 'block';
-  } catch { showError('サーバーに接続できませんでした'); }
+    if (!data.ok) return showNg(data.error);
+    invData = data;
+
+    // ウェルカム画面を構成
+    const ri = ROLE_INFO[data.role] || { ico: '👤', name: data.role + 'として招待', sub: '' };
+    document.getElementById('rc-ico').textContent  = ri.ico;
+    document.getElementById('rc-name').textContent = ri.name;
+    document.getElementById('rc-sub').textContent  = ri.sub;
+
+    // メールがプリセットされていれば readonly で表示
+    if (data.email) {
+      const el = document.getElementById('inp-email');
+      el.value    = data.email;
+      el.readOnly = true;
+    }
+
+    document.getElementById('card-loading').style.display = 'none';
+    document.getElementById('card-main').style.display    = '';
+  } catch {
+    showNg('サーバーに接続できませんでした');
+  }
 }
-function showError(msg) {
-  document.getElementById('loading').style.display = 'none';
-  document.getElementById('ng-msg').textContent    = msg;
-  document.getElementById('ng-state').classList.add('on');
+
+function showNg(msg) {
+  document.getElementById('card-loading').style.display = 'none';
+  document.getElementById('ng-msg').textContent = msg;
+  document.getElementById('card-ng').style.display = '';
 }
+
+/* ── 登録フォーム送信 ── */
 async function doAccept(e) {
   e.preventDefault();
-  const btn  = document.getElementById('btn');
-  const err  = document.getElementById('err');
-  const pass  = document.getElementById('pass').value;
-  const pass2 = document.getElementById('pass2').value;
+  const err   = document.getElementById('form-err');
+  const email = document.getElementById('inp-email').value.trim();
+  const name  = document.getElementById('inp-name').value.trim();
+  const pass  = document.getElementById('inp-pass').value;
+  const pass2 = document.getElementById('inp-pass2').value;
   err.classList.remove('on');
+
+  if (!email) { err.textContent = 'メールアドレスを入力してください'; err.classList.add('on'); return; }
   if (pass !== pass2) { err.textContent = 'パスワードが一致しません'; err.classList.add('on'); return; }
-  btn.disabled = true; btn.textContent = '設定中...';
+
+  const btn = document.getElementById('btn-submit');
+  btn.disabled = true; btn.textContent = '作成中...';
+
   try {
     const res  = await fetch('/api/invitations/accept', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token, password: pass }),
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, email, displayName: name || null, password: pass }),
     });
     const data = await res.json();
     if (data.ok) {
-      document.getElementById('main-form').style.display = 'none';
-      document.getElementById('ok-state').classList.add('on');
-      setTimeout(() => { window.location.href = '/'; }, 1500);
+      document.getElementById('ok-name').textContent = `ようこそ、${name || email}さん！`;
+      goStep(2);
+      // プログレスバーを開始
+      setTimeout(() => { document.getElementById('ok-bar').style.width = '100%'; }, 60);
+      setTimeout(() => { window.location.href = '/'; }, 2300);
     } else {
-      err.textContent = data.error || '設定に失敗しました';
+      err.textContent = data.error || '登録に失敗しました';
       err.classList.add('on');
-      btn.disabled = false; btn.textContent = '設定してログイン →';
+      btn.disabled = false; btn.textContent = 'アカウントを作成 →';
     }
   } catch {
     err.textContent = 'サーバーに接続できませんでした';
     err.classList.add('on');
-    btn.disabled = false; btn.textContent = '設定してログイン →';
+    btn.disabled = false; btn.textContent = 'アカウントを作成 →';
   }
 }
+
 init();
 </script>
 </body>

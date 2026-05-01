@@ -2346,19 +2346,26 @@ function renderUsersV() {
   ${invs.length ? `<div class="sec"><div class="sec-ttl">招待中 <span class="cnt-badge">${invs.length}</span></div>
     <div class="card">${invRows}</div>
   </div>` : ''}
-  <div class="sec"><div class="sec-ttl">招待を送る</div>
-    <div class="card">
-      <div class="cr">
-        <div><div class="cr-lbl">メールアドレス &amp; 権限</div><div class="cr-desc">招待URLが発行されます（24時間有効）</div></div>
-        <div class="cr-ctrl" style="gap:6px">
-          <input class="inp" id="inv-email" placeholder="user@example.com" type="email" style="width:200px">
-          <select class="inp" id="inv-role" style="width:96px">
+  <div class="sec"><div class="sec-ttl">招待リンクを作成</div>
+    <div class="card" style="padding:20px 24px">
+      <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+        <div>
+          <div style="font-size:11px;font-weight:700;color:var(--c-t2);margin-bottom:5px;letter-spacing:.04em">権限</div>
+          <select class="inp" id="inv-role" style="width:108px">
             <option value="member">メンバー</option>
             <option value="executive">幹部</option>
             <option value="admin">管理者</option>
           </select>
-          <button class="btn btn-pri" onclick="sendInv()">招待送信</button>
         </div>
+        <button class="btn btn-pri" style="height:38px" onclick="genInviteLink()">🔗 リンクを生成</button>
+      </div>
+      <div id="inv-result" style="display:none;margin-top:16px">
+        <div style="font-size:11.5px;color:var(--c-t3);font-weight:600;margin-bottom:8px">🔗 招待リンク（24時間有効）</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input class="inp" id="inv-url" readonly style="flex:1;font-size:11.5px;background:#f8fafc;color:var(--c-t2)">
+          <button class="btn btn-pri btn-sm" id="inv-copy-btn" onclick="copyInvLink()" style="white-space:nowrap;min-width:72px">コピー</button>
+        </div>
+        <div style="font-size:11px;color:var(--c-t4);margin-top:6px">このリンクを招待したい人に共有してください。リンクを開くとアカウント登録できます。</div>
       </div>
     </div>
   </div>`;
@@ -2455,20 +2462,25 @@ async function delG(id, name) {
   else toast(`❌ ${r.error}`, 'err');
 }
 
-async function sendInv() {
-  const email = document.getElementById('inv-email')?.value.trim();
-  const role  = document.getElementById('inv-role')?.value;
-  if (!email) { toast('メールアドレスを入力してください', 'err'); return; }
-  const r = await api('POST', '/api/invitations', { email, role });
-  if (r.ok) {
-    if (r.warning) {
-      toast(`招待URLを発行しました`, 'ok');
-      if (r.inviteUrl) prompt('招待URL（コピーして共有してください）:', r.inviteUrl);
-    } else {
-      toast(`✅ "${email}" に招待を送信しました`, 'ok');
-    }
-    S.dashUsers = null; await fetchDashUsers(); render();
-  } else toast(`❌ ${r.error}`, 'err');
+async function genInviteLink() {
+  const role = document.getElementById('inv-role')?.value;
+  const r = await api('POST', '/api/invitations', { role });
+  if (!r.ok && !r.inviteUrl) { toast(`❌ ${r.error}`, 'err'); return; }
+  const url = r.inviteUrl;
+  const el  = document.getElementById('inv-url');
+  if (el) { el.value = url; }
+  const res = document.getElementById('inv-result');
+  if (res) res.style.display = '';
+  S.dashUsers = null; fetchDashUsers();
+}
+async function copyInvLink() {
+  const url = document.getElementById('inv-url')?.value;
+  if (!url) return;
+  try {
+    await navigator.clipboard.writeText(url);
+    const btn = document.getElementById('inv-copy-btn');
+    if (btn) { btn.textContent = '✅ コピー済み'; setTimeout(() => { btn.textContent = 'コピー'; }, 2000); }
+  } catch { toast('コピーできませんでした', 'err'); }
 }
 
 async function cancelInv(id, email) {
