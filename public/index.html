@@ -1739,22 +1739,31 @@ async function fetchWinsRange(from, to) {
 function renderWinsV() {
   const period = S.winsPeriod || 'daily';
 
+  // 月次データを常にバックグラウンドで確保（全タブでランキングに使用）
+  const monthRange = wlMonthRange(S.date);
+  const monthKey   = `${monthRange.from}_${monthRange.to}`;
+  if (!S.winsRange[monthKey]) fetchWinsRange(monthRange.from, monthRange.to).then(render);
+  const monthData  = S.winsRange[monthKey] || null;
+  const ranking    = monthData
+    ? wlWinsRanking(monthData.members)
+    : `<div style="padding:8px 20px 4px;color:var(--c-t4);font-size:12px">🏆 月次ランキング集計中...</div>`;
+
   if (period === 'daily') {
     if (!S.dash || S.dash.date !== S.date) {
       fetchDash().then(render);
       return `<div class="spin-wrap"><div class="spinner"></div></div>`;
     }
-    return wlBar(period) + wlHeroDaily(S.dash) + wlBodyDaily(S.dash);
+    return wlBar(period) + wlHeroDaily(S.dash) + ranking + wlBodyDaily(S.dash);
   }
 
-  const range = period === 'weekly' ? wlWeekRange(S.date) : wlMonthRange(S.date);
+  const range = period === 'weekly' ? wlWeekRange(S.date) : monthRange;
   const key   = `${range.from}_${range.to}`;
   if (!S.winsRange[key]) {
     fetchWinsRange(range.from, range.to).then(render);
     return `<div class="spin-wrap"><div class="spinner"></div></div>`;
   }
   const data = S.winsRange[key];
-  return wlBar(period, range) + (period === 'weekly' ? wlBodyWeekly(data) : wlBodyMonthly(data));
+  return wlBar(period, range) + ranking + (period === 'weekly' ? wlBodyWeekly(data) : wlBodyMonthly(data));
 }
 
 /* ─── トップバー ─── */
@@ -2097,7 +2106,6 @@ function wlBodyMonthly(data) {
     return r(a) - r(b);
   });
   return wlHeroRange(posted, notPosted, totalWins, totalLosses, avgRef, '今月ゼロ')
-    + wlWinsRanking(members)
     + `<div class="sec"><div class="wl-grid">${sorted.map(m => renderWlMonthCard(m)).join('')}</div></div>`;
 }
 
