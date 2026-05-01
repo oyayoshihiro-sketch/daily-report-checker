@@ -266,7 +266,7 @@ select.inp { cursor: pointer; }
 
 /* ── Member rows ── */
 .mr {
-  display: grid; grid-template-columns: 20px 1fr 86px 118px 86px 78px 68px;
+  display: grid; grid-template-columns: 20px 1fr 100px 96px 78px 68px;
   align-items: center; gap: 10px; padding: 11px 18px;
   border-bottom: 1px solid #f3faf5; transition: background .1s;
 }
@@ -295,7 +295,7 @@ select.inp { cursor: pointer; }
 .missing-card-name { font-weight:700;font-size:13px;color:var(--c-t1); }
 .missing-card-grp  { font-size:11px;color:var(--c-t3);margin-top:2px; }
 .th-row {
-  display: grid; grid-template-columns: 20px 1fr 86px 118px 86px 78px 68px;
+  display: grid; grid-template-columns: 20px 1fr 100px 96px 78px 68px;
   align-items: center; gap: 10px; padding: 8px 18px;
   background: #f0fdf4; border-bottom: 1.5px solid var(--c-bdr2);
 }
@@ -816,14 +816,18 @@ function renderDaily(tabs) {
     ${alerts.map(m => renderAC(m, cfg)).join('')}
   </div>` : '';
 
-  return bar + renderOrgCard(org_stats) + renderGroupOrgSection(group_tree) + renderStats(stats) + missingSection + alertSection + renderDeptTree(group_tree, ungrouped, cfg);
+  return bar + renderOrgCard(org_stats) + renderGroupOrgSection(group_tree) + renderStats(stats, members) + missingSection + alertSection + renderDeptTree(group_tree, ungrouped, cfg);
 }
 
-function renderStats(s) {
+function renderStats(s, members) {
   const pct = s.total > 0 ? Math.round(s.posted / s.total * 100) : 0;
+  // 二回投稿済み数をmembersから計算
+  const dualPosted = members ? members.filter(m => m.check?.morning_posted && m.check?.evening_posted).length : null;
+  const dualPct = dualPosted !== null && s.total > 0 ? Math.round(dualPosted / s.total * 100) : null;
   return `<div class="stats">
     <div class="sc"><span class="sc-ico">👥</span><span class="sc-val">${s.total}</span><span class="sc-lbl">監視対象</span></div>
-    <div class="sc s-g"><span class="sc-ico">✅</span><span class="sc-val">${s.posted}</span><span class="sc-lbl">投稿済み ${pct}%</span></div>
+    <div class="sc s-g"><span class="sc-ico">✅</span><span class="sc-val">${s.posted}</span><span class="sc-lbl">投稿済 ${pct}%</span></div>
+    ${dualPosted !== null ? `<div class="sc s-g"><span class="sc-ico">☀️🌙</span><span class="sc-val">${dualPosted}</span><span class="sc-lbl">2回投稿 ${dualPct}%</span></div>` : ''}
     <div class="sc ${s.missing>0?'s-r':''}"><span class="sc-ico">📭</span><span class="sc-val">${s.missing}</span><span class="sc-lbl">未投稿</span></div>
     <div class="sc ${(s.redCount||0)>0?'s-r':''}"><span class="sc-ico">🔴</span><span class="sc-val">${s.redCount||0}</span><span class="sc-lbl">赤</span></div>
     <div class="sc ${(s.yellowCount||0)>0?'s-a':''}"><span class="sc-ico">🟡</span><span class="sc-val">${s.yellowCount||0}</span><span class="sc-lbl">黄</span></div>
@@ -853,7 +857,7 @@ function rateSig(rate) {
   return { cl: 't-g', icon: '✅' };
 }
 
-// 日次: enriched members ({check}) から2軸の統計計算
+// 日次: enriched members ({check}) から統計計算
 function calcOrgStatsFromDailyMs(ms) {
   const posted = ms.filter(m => m.check?.posted);
   // 感情スコア
@@ -866,9 +870,13 @@ function calcOrgStatsFromDailyMs(ms) {
   const timeSig   = scoreToSig(timeScore);
   // 投稿率
   const rate = ms.length ? posted.length / ms.length : 0;
+  // 二回投稿率
+  const dualPosted = ms.filter(m => m.check?.morning_posted && m.check?.evening_posted);
+  const dualRate   = ms.length ? dualPosted.length / ms.length : 0;
   const pct  = Math.round(rate * 100);
-  const summary = `投稿率${pct}%・感情スコア${sentScore != null ? sentScore.toFixed(2) + '（' + sigText(sentSig) + '）' : '—'}・時刻スコア${timeScore != null ? timeScore.toFixed(2) + '（' + sigText(timeSig) + '）' : '—'}`;
-  return { sentScore, sentSig, timeScore, timeSig, posting_rate: rate, summary };
+  const dpct = Math.round(dualRate * 100);
+  const summary = `投稿率${pct}%・2回投稿率${dpct}%・感情${sentScore != null ? sentScore.toFixed(2) + '（' + sigText(sentSig) + '）' : '—'}`;
+  return { sentScore, sentSig, timeScore, timeSig, posting_rate: rate, dual_post_rate: dualRate, summary };
 }
 
 // 週次: weekly members ({days}) から1日分の統計計算
@@ -897,8 +905,10 @@ function renderOrgSigBlock(label, score, sig) {
 
 function renderOrgCard(os, title = '全社コンディション') {
   if (!os) return '';
-  const pct = Math.round((os.posting_rate || 0) * 100);
+  const pct  = Math.round((os.posting_rate || 0) * 100);
+  const dpct = Math.round((os.dual_post_rate || 0) * 100);
   const { cl: rCl, icon: rIco } = rateSig(os.posting_rate);
+  const { cl: dCl, icon: dIco } = rateSig(os.dual_post_rate);
   return `<div class="org-card">
     <div class="org-card-label" style="margin-bottom:12px">${title}</div>
     <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;margin-bottom:12px">
@@ -909,6 +919,11 @@ function renderOrgCard(os, title = '全社コンディション') {
       <div style="flex:0 0 auto">
         <div style="font-size:10px;color:var(--c-t4);margin-bottom:5px">📋 投稿率</div>
         <div style="font-size:22px;font-weight:800" class="${rCl}">${rIco} ${pct}%</div>
+      </div>
+      <div style="width:1px;background:var(--c-bdr2);align-self:stretch;margin:0 4px"></div>
+      <div style="flex:0 0 auto">
+        <div style="font-size:10px;color:var(--c-t4);margin-bottom:5px">☀️🌙 朝夜2回投稿率</div>
+        <div style="font-size:22px;font-weight:800" class="${dCl}">${dIco} ${dpct}%</div>
       </div>
     </div>
     <div class="org-summary-line">${os.summary || ''}</div>
@@ -1015,27 +1030,37 @@ function renderAC(m, cfg) {
     check.late_night_flag ? `<span class="chip c-b">🌙 深夜</span>` : '',
     check.sentiment_flag  ? `<span class="chip c-r">😟 ネガティブ</span>` : '',
     check.volume_flag     ? `<span class="chip c-a">${check.volume_ratio<1?'📉':'📈'} 文量変化</span>` : '',
+    check.dual_post_flag  ? `<span class="chip c-a">☀️🌙 片方のみ</span>` : '',
   ].filter(Boolean).join('');
   const sigBadge = signal === 'red'
     ? `<span class="sig-pill sig-r">🔴 赤信号</span>`
     : `<span class="sig-pill sig-y">🟡 黄信号</span>`;
 
-  // 理由をスコア・フラグから直接構築（sentimentFlagに頼らない）
+  // 理由をスコア・フラグから直接構築
   const sc = check.sentiment_score;
+  const ref = check.reflection_score;
   const reasonParts = [];
   if (check.late_night_flag) reasonParts.push(`🌙 深夜投稿`);
+  if (check.dual_post_flag)  reasonParts.push(`☀️🌙 片方のみ投稿`);
   if (sc !== null && sc !== undefined && sc < 0.60)
-    reasonParts.push(`😟 感情スコア ${sc.toFixed(2)}`);
+    reasonParts.push(`😟 感情 ${sc.toFixed(2)}`);
+  if (ref !== null && ref !== undefined && ref < 0.45)
+    reasonParts.push(`📝 振返 ${ref.toFixed(2)}`);
   if (check.volume_flag)
     reasonParts.push(`${check.volume_ratio<1?'📉':'📈'} 文量 ${fmtP(check.volume_ratio)}`);
   const reasonStr = reasonParts.join(' ・ ');
   const summaryStr = check.sentiment_summary || '';
+  const winsStr   = check.wins_text   || '';
+  const lossesStr = check.losses_text || '';
 
-  // 理由 + サマリーを常に表示（どちらかでもあれば出す）
   const oneLiner = [
     reasonStr ? `<span style="font-weight:700;color:var(--c-t1)">${reasonStr}</span>` : '',
     summaryStr ? `<span style="color:var(--c-t2)">${reasonStr ? ' — ' : ''}${summaryStr}</span>` : '',
   ].filter(Boolean).join('');
+  const winsLossesHtml = (winsStr || lossesStr) ? `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:6px">
+    ${winsStr   ? `<div style="flex:1;min-width:120px"><span style="font-size:10px;font-weight:700;color:#0369a1">🏆 勝ち</span><div style="font-size:12px;color:#0c4a6e;margin-top:2px;line-height:1.5">${winsStr}</div></div>` : ''}
+    ${lossesStr ? `<div style="flex:1;min-width:120px"><span style="font-size:10px;font-weight:700;color:#7c3aed">💪 負け</span><div style="font-size:12px;color:#4c1d95;margin-top:2px;line-height:1.5">${lossesStr}</div></div>` : ''}
+  </div>` : '';
 
   return `<div class="ac ${signal === 'red' ? '' : 'warn'}">
     <div class="ac-hd">
@@ -1046,6 +1071,7 @@ function renderAC(m, cfg) {
       <div class="ac-chips">${sigBadge} ${chips}</div>
     </div>
     ${oneLiner ? `<div class="ac-summary">${oneLiner}</div>` : '<div class="ac-summary" style="color:var(--c-t4);font-size:11.5px">チェック実行でサマリーが生成されます</div>'}
+    ${winsLossesHtml}
   </div>`;
 }
 
@@ -1094,8 +1120,9 @@ function renderDeptBlock(dept, cfg) {
 
 function renderTblHd() {
   return `<div class="th-row">
-    <div></div><div class="th">名前 / コンディション</div><div class="th">投稿時刻</div>
-    <div class="th">感情スコア</div><div class="th">文量変化</div>
+    <div></div><div class="th">名前 / コンディション</div>
+    <div class="th">☀️朝 / 🌙夜</div>
+    <div class="th">感情 / 振返</div>
     <div class="th th-r">信号</div><div class="th th-r">監視</div>
   </div>`;
 }
@@ -1128,8 +1155,17 @@ function sortBySignal(arr) {
   });
 }
 
+function fmtPostTime(reportObj, lateNightFlag, latePostFlag) {
+  if (!reportObj) return '<span style="color:var(--c-t4);font-size:11px">未</span>';
+  const t = fmtT(reportObj.posted_at);
+  if (lateNightFlag >= 2) return `<span style="font-weight:700;color:var(--c-red)">${t}🌙</span>`;
+  if (lateNightFlag === 1) return `<span style="font-weight:700;color:var(--c-amb)">${t}🌆</span>`;
+  if (latePostFlag)        return `<span style="font-weight:700;color:var(--c-amb)">${t}⏰</span>`;
+  return `<span class="mr-time">${t}</span>`;
+}
+
 function renderMR(m, cfg) {
-  const { user, check, report } = m;
+  const { user, check, morning_report, evening_report, report } = m;
   const name   = user.real_name || user.display_name || user.user_id;
   const monBtn = S.role === 'admin' ? `<button class="mon-btn mon-on" onclick="toggleMon('${user.user_id}',0)" title="監視停止">監視中</button>` : '';
 
@@ -1137,53 +1173,59 @@ function renderMR(m, cfg) {
     return `<div class="mr rm">
       <div class="dot d-n"></div>
       <div><div class="mr-name" style="color:var(--c-red)">${name}</div><div class="mr-summary">未投稿</div></div>
-      <div>—</div><div>—</div><div>—</div>
+      <div>—</div><div>—</div>
       <div class="mr-flags"><span class="sig-pill sig-r">📭 未投稿</span></div>
       <div style="display:flex;justify-content:flex-end">${monBtn}</div>
     </div>`;
   }
 
-  const sig  = check.signal || 'green';
-  const postedAt = report?.posted_at;
-  const tHtml = check.late_night_flag >= 2
-    ? `<span class="t-b" style="font-weight:700;color:var(--c-red)">${fmtT(postedAt)} <span style="font-size:11px">🌙</span></span>`
-    : check.late_night_flag === 1
-    ? `<span class="t-b" style="font-weight:700;color:var(--c-amb)">${fmtT(postedAt)} <span style="font-size:11px">🌆</span></span>`
-    : check.late_post_flag
-    ? `<span class="t-b" style="font-weight:700;color:var(--c-amb)">${fmtT(postedAt)} <span style="font-size:11px">⏰</span></span>`
-    : `<span class="mr-time">${fmtT(postedAt)}</span>`;
-  let sHtml = '—';
-  if (check.sentiment_score !== null && check.sentiment_score !== undefined) {
-    const sc = check.sentiment_score, thr = cfg?.sentiment_threshold ?? 0.35;
-    const cl = sc >= 0.65 ? 't-g' : sc < thr ? 't-r' : 't-3';
-    const lb = sc >= 0.65 ? 'ポジ' : sc < thr ? 'ネガ' : '中立';
-    sHtml = `<span class="${cl}">${sc.toFixed(2)} <span style="font-size:11px">${lb}</span></span>`;
+  const sig = check.signal || 'green';
+
+  // 朝/夜 投稿時刻表示
+  const morningT = fmtPostTime(morning_report, 0, 0);
+  const eveningT = fmtPostTime(evening_report, check.late_night_flag, check.late_post_flag);
+  const dualBadge = check.dual_post_flag
+    ? `<span class="chip c-a" style="font-size:10px;padding:1px 5px;margin-top:2px">片方のみ</span>`
+    : '';
+  const timeHtml = `<div style="display:flex;flex-direction:column;gap:2px">
+    <div style="display:flex;align-items:center;gap:3px"><span style="font-size:9px;color:var(--c-t4);min-width:14px">☀️</span>${morningT}</div>
+    <div style="display:flex;align-items:center;gap:3px"><span style="font-size:9px;color:var(--c-t4);min-width:14px">🌙</span>${eveningT}</div>
+    ${dualBadge}
+  </div>`;
+
+  // 感情スコア + 振り返りスコア
+  let scoreHtml = '—';
+  {
+    const sc  = check.sentiment_score;
+    const ref = check.reflection_score;
+    const thr = cfg?.sentiment_threshold ?? 0.35;
+    const parts = [];
+    if (sc !== null && sc !== undefined) {
+      const cl = sc >= 0.65 ? 't-g' : sc < thr ? 't-r' : 't-3';
+      const lb = sc >= 0.65 ? '😊' : sc < thr ? '😟' : '😐';
+      parts.push(`<div style="font-size:9px;color:var(--c-t4)">感情</div><div class="${cl}" style="font-weight:700">${lb} ${sc.toFixed(2)}</div>`);
+    }
+    if (ref !== null && ref !== undefined) {
+      const rcl = ref >= 0.65 ? 't-g' : ref < 0.45 ? 't-a' : 't-3';
+      parts.push(`<div style="font-size:9px;color:var(--c-t4);margin-top:2px">振返</div><div class="${rcl}" style="font-weight:700">📝 ${ref.toFixed(2)}</div>`);
+    }
+    if (parts.length) scoreHtml = `<div style="font-size:12px">${parts.join('')}</div>`;
   }
-  let vHtml = '—';
-  if (check.volume_ratio !== null && check.volume_ratio !== undefined) {
-    const p = fmtP(check.volume_ratio);
-    const cl = check.volume_flag ? 't-a' : 't-3';
-    const ic = check.volume_ratio < 0.95 ? '📉 ' : check.volume_ratio > 1.05 ? '📈 ' : '';
-    vHtml = `<span class="${cl}">${ic}${p}</span>`;
-  }
+
   const sigBadge = sig === 'red'
     ? `<span class="sig-pill sig-r">🔴 赤</span>`
     : sig === 'yellow'
     ? `<span class="sig-pill sig-y">🟡 黄</span>`
     : `<span class="sig-pill sig-g">🟢 青</span>`;
-  const subFlags = [
-    check.late_night_flag >= 2 ? `<span class="chip c-b" style="font-size:10px;padding:1px 5px">🌙</span>` :
-    check.late_night_flag === 1 ? `<span class="chip c-a" style="font-size:10px;padding:1px 5px">🌆</span>` :
-    check.late_post_flag ? `<span class="chip c-a" style="font-size:10px;padding:1px 5px">⏰</span>` : '',
-    check.volume_flag     ? `<span class="chip c-a" style="font-size:10px;padding:1px 5px">${check.volume_ratio<1?'📉':'📈'}</span>` : '',
-  ].filter(Boolean).join('');
 
-  // サマリー: Claude生成サマリー > 日報テキストの先頭60字
-  const rawText = report?.text ? report.text.replace(/\s+/g, ' ').trim() : '';
+  // サマリー (夕方 > 全体)
+  const rawText = (evening_report || report)?.text?.replace(/\s+/g, ' ').trim() || '';
   const textPreview = rawText.length > 60 ? rawText.slice(0, 60) + '…' : rawText;
-  const summary      = check.sentiment_summary || textPreview || null;
+  const summary = check.sentiment_summary || textPreview || null;
   const praisePoints = check.praise_points || null;
-  const followPoints = check.follow_points  || null;
+  const followPoints = check.follow_points || null;
+  const winsText     = check.wins_text     || null;
+  const lossesText   = check.losses_text   || null;
 
   const praiseHtml = praisePoints
     ? `<div style="display:flex;gap:4px;align-items:flex-start;margin-top:3px">
@@ -1195,18 +1237,32 @@ function renderMR(m, cfg) {
         <span style="font-size:10px;flex-shrink:0;margin-top:1px;color:#b45309;font-weight:800">🔍</span>
         <span style="font-size:11px;color:#92400e;line-height:1.5">${followPoints}</span>
        </div>` : '';
+  const winsHtml = winsText
+    ? `<div style="display:flex;gap:4px;align-items:flex-start;margin-top:3px">
+        <span style="font-size:10px;flex-shrink:0;margin-top:1px;color:#0369a1;font-weight:800">🏆</span>
+        <span style="font-size:11px;color:#0c4a6e;line-height:1.5">${winsText}</span>
+       </div>` : '';
+  const lossesHtml = lossesText
+    ? `<div style="display:flex;gap:4px;align-items:flex-start;margin-top:3px">
+        <span style="font-size:10px;flex-shrink:0;margin-top:1px;color:#7c3aed;font-weight:800">💪</span>
+        <span style="font-size:11px;color:#4c1d95;line-height:1.5">${lossesText}</span>
+       </div>` : '';
+
+  const charCount = (evening_report || morning_report || report)?.char_count;
+  const volumeFlag = check.volume_flag;
+  const volBadge = volumeFlag
+    ? `<span class="chip c-a" style="font-size:10px;padding:1px 5px">${(check.volume_ratio||0)<1?'📉':'📈'}</span>` : '';
 
   return `<div class="mr ${signalRow(sig)}">
     <div class="dot ${signalDot(sig)}"></div>
     <div style="min-width:0">
       <div class="mr-name">${name}</div>
       ${summary ? `<div class="mr-summary">${summary}</div>` : ''}
-      ${praiseHtml}${followHtml}
-      <div class="mr-meta">${report ? `${report.char_count}字` : ''}${subFlags ? ' ' + subFlags : ''}</div>
+      ${winsHtml}${lossesHtml}${praiseHtml}${followHtml}
+      <div class="mr-meta">${charCount ? charCount + '字' : ''}${volBadge ? ' ' + volBadge : ''}</div>
     </div>
-    <div>${tHtml}</div>
-    <div class="mr-sent">${sHtml}</div>
-    <div class="mr-vol">${vHtml}</div>
+    <div>${timeHtml}</div>
+    <div>${scoreHtml}</div>
     <div class="mr-flags">${sigBadge}</div>
     <div style="display:flex;justify-content:flex-end">${monBtn}</div>
   </div>`;
@@ -1306,8 +1362,7 @@ function renderWkDeptBlock(dept, days, td) {
   </div>`;
 }
 
-// 日次データから信号を動的計算（フロント版）
-// late_night_flag: 2=23時〜翌5時(赤), 1=22時台(黄) / late_post_flag: 1=5〜13時(黄)
+// 日次データから信号を動的計算（フロント版、dual-post対応）
 function calcDaySig(dd) {
   if (!dd?.posted) return null;
   if (dd.late_night_flag >= 2) return 'red';
@@ -1319,8 +1374,12 @@ function calcDaySig(dd) {
   if (s !== null && s !== undefined) {
     if (s < 0.60) return 'yellow';
   }
-  if (dd.late_post_flag) return 'yellow';
-  if (dd.volume_flag)    return 'yellow';
+  if (dd.reflection_score !== null && dd.reflection_score !== undefined) {
+    if (dd.reflection_score < 0.45) return 'yellow';
+  }
+  if (dd.dual_post_flag)  return 'yellow';
+  if (dd.late_post_flag)  return 'yellow';
+  if (dd.volume_flag)     return 'yellow';
   return 'green';
 }
 function sigPillClass(sig) {
@@ -1350,7 +1409,7 @@ function renderWkMemberRow(m, days, td) {
   const name = user.real_name || user.display_name || user.user_id;
   const weekdays = days.filter(d => !isWkend(d));
 
-  // 日次セル（平日のみ・信号表示）
+  // 日次セル（平日のみ・信号表示 + 朝夜ステータス）
   const cells = weekdays.map(d => {
     const dd = dayData[d];
     if (!dd || dd.is_future) return `<div class="wg-cell future"><div class="cell-pill cp-fut"></div></div>`;
@@ -1360,9 +1419,15 @@ function renderWkMemberRow(m, days, td) {
     const sig  = calcDaySig(dd);
     const pcls = sigPillClass(sig);
     const ico  = sigEmoji(sig);
-    const title = `${d} — ${sig === 'red' ? '赤信号' : sig === 'yellow' ? '黄信号' : '青信号'}`;
+    // 朝・夜の投稿状況インジケーター
+    const mIcon = dd.morning_posted ? '☀️' : '<span style="opacity:.3">☀️</span>';
+    const eIcon = dd.evening_posted ? '🌙' : '<span style="opacity:.3">🌙</span>';
+    const title = `${d} — ${sig === 'red' ? '赤信号' : sig === 'yellow' ? '黄信号' : '青信号'} (☀️${dd.morning_posted?'✓':'—'} 🌙${dd.evening_posted?'✓':'—'})`;
     return `<div class="wg-cell" onclick="gotoDay('${d}')" title="${title}" style="cursor:pointer">
-      <div class="cell-pill ${pcls}" style="font-size:15px;padding:6px 4px">${ico}</div>
+      <div class="cell-pill ${pcls}" style="padding:4px 4px;display:flex;flex-direction:column;align-items:center;gap:1px">
+        <div style="font-size:14px">${ico}</div>
+        <div style="font-size:9px;display:flex;gap:2px">${mIcon}${eIcon}</div>
+      </div>
     </div>`;
   }).join('');
 

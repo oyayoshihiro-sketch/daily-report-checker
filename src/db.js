@@ -26,13 +26,14 @@ function initTables() {
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id     TEXT    NOT NULL,
       report_date TEXT    NOT NULL,  -- YYYY-MM-DD (JST)
+      report_type TEXT    NOT NULL DEFAULT 'evening',  -- 'morning' | 'evening'
       posted_at   TEXT    NOT NULL,  -- ISO8601 UTC
       posted_hour INTEGER NOT NULL,  -- 0-23 (JST)
       text        TEXT    NOT NULL,
       char_count  INTEGER NOT NULL,  -- URL・空白除去後の文字数
       ts          TEXT    NOT NULL UNIQUE,
       channel_id  TEXT    NOT NULL,
-      UNIQUE(user_id, report_date)
+      UNIQUE(user_id, report_date, report_type)
     );
 
     -- 3軸チェック結果
@@ -116,8 +117,46 @@ function initTables() {
     if (!ccCols.includes('late_post_flag'))    _db.exec("ALTER TABLE condition_checks ADD COLUMN late_post_flag INTEGER NOT NULL DEFAULT 0");
     if (!ccCols.includes('praise_points'))     _db.exec("ALTER TABLE condition_checks ADD COLUMN praise_points TEXT");
     if (!ccCols.includes('follow_points'))     _db.exec("ALTER TABLE condition_checks ADD COLUMN follow_points TEXT");
+    // dual-post fields
+    if (!ccCols.includes('morning_posted'))    _db.exec("ALTER TABLE condition_checks ADD COLUMN morning_posted INTEGER NOT NULL DEFAULT 0");
+    if (!ccCols.includes('evening_posted'))    _db.exec("ALTER TABLE condition_checks ADD COLUMN evening_posted INTEGER NOT NULL DEFAULT 0");
+    if (!ccCols.includes('dual_post_flag'))    _db.exec("ALTER TABLE condition_checks ADD COLUMN dual_post_flag INTEGER NOT NULL DEFAULT 0");
+    if (!ccCols.includes('morning_summary'))   _db.exec("ALTER TABLE condition_checks ADD COLUMN morning_summary TEXT");
+    if (!ccCols.includes('wins_text'))         _db.exec("ALTER TABLE condition_checks ADD COLUMN wins_text TEXT");
+    if (!ccCols.includes('losses_text'))       _db.exec("ALTER TABLE condition_checks ADD COLUMN losses_text TEXT");
+    if (!ccCols.includes('reflection_score'))  _db.exec("ALTER TABLE condition_checks ADD COLUMN reflection_score REAL");
+    if (!ccCols.includes('growth_note'))       _db.exec("ALTER TABLE condition_checks ADD COLUMN growth_note TEXT");
   } catch (e) {
     console.error('[db] condition_checks migration error:', e.message);
+  }
+
+  // daily_reports: report_type カラム追加マイグレーション
+  try {
+    const drCols = _db.prepare('PRAGMA table_info(daily_reports)').all().map(c => c.name);
+    if (!drCols.includes('report_type')) {
+      _db.exec(`
+        CREATE TABLE daily_reports_new (
+          id          INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id     TEXT    NOT NULL,
+          report_date TEXT    NOT NULL,
+          report_type TEXT    NOT NULL DEFAULT 'evening',
+          posted_at   TEXT    NOT NULL,
+          posted_hour INTEGER NOT NULL,
+          text        TEXT    NOT NULL,
+          char_count  INTEGER NOT NULL,
+          ts          TEXT    NOT NULL UNIQUE,
+          channel_id  TEXT    NOT NULL,
+          UNIQUE(user_id, report_date, report_type)
+        );
+        INSERT INTO daily_reports_new (id, user_id, report_date, report_type, posted_at, posted_hour, text, char_count, ts, channel_id)
+          SELECT id, user_id, report_date, 'evening', posted_at, posted_hour, text, char_count, ts, channel_id FROM daily_reports;
+        DROP TABLE daily_reports;
+        ALTER TABLE daily_reports_new RENAME TO daily_reports;
+      `);
+      console.log('[db] daily_reports: report_type 対応にマイグレーション完了');
+    }
+  } catch (e) {
+    console.error('[db] daily_reports migration error:', e.message);
   }
 
   // 旧スキーマ（username列）からの移行
@@ -316,6 +355,143 @@ JSONのみ返すこと。前置き・説明・コードブロック記号（\`\`
 labelの値は GREEN / YELLOW / ORANGE / RED / CRITICAL のいずれか。
 praiseは必ず記述すること。followは懸念がない場合はnullとすること。`;
 
+const MORNING_PROMPT_DEFAULT = `## ロール
+あなたは日本の職場における感情分析の専門家です。
+朝の日報（一日の始まりに投稿されるもの）を読み、メンバーの意欲・コンディションを評価してください。
+
+## スコアの定義
+
+コンディションスコアは 0.00〜1.00 の連続値です。
+
+  1.00 = 意欲充実（明確な目標、前向きな姿勢、能動的な計画）
+  0.00 = 意欲低下（目標不明確、消極的・体調不良の兆候）
+
+帯域:
+  0.80〜1.00  GREEN    良好
+  0.60〜0.79  YELLOW   やや注意
+  0.40〜0.59  ORANGE   要観察
+  0.20〜0.39  RED      要対応
+  0.00〜0.19  CRITICAL 緊急対応
+
+## 採点の観点
+
+- 今日の目標・タスクが具体的に書かれているか
+- 前向きで主体的な言葉が使われているか
+- 昨日や過去の課題への言及と改善意識があるか
+- エネルギー・やる気が文章から感じられるか
+- 関係者への言及や協力意識があるか
+
+## 入力
+
+朝の日報テキスト:
+{DAILY_REPORT_TEXT}
+
+## 出力フォーマット
+
+JSONのみ返すこと。前置き・説明・コードブロック記号（\`\`\`）は一切不要。
+
+{
+  "score": 0.00,
+  "label": "GREEN",
+  "summary": "今日の計画・意欲を60字以内で。",
+  "praise": "前向きな計画や意識をもとに、マネージャーが声かけする際に使える表現で1文。",
+  "follow": null
+}
+
+labelの値は GREEN / YELLOW / ORANGE / RED / CRITICAL のいずれか。
+followは懸念がない場合はnullとすること。`;
+
+const EVENING_PROMPT_DEFAULT = `## ロール
+あなたは日本の職場における感情分析・振り返りコーチの専門家です。
+夕方の日報（一日の振り返り）を読み、メンバーのコンディションと振り返りの質を評価してください。
+
+---
+
+## スコアの定義
+
+コンディションスコアは 0.00〜1.00 の連続値です。
+
+  1.00 = 強いポジティブ（エネルギーに満ち、充実している）
+  0.00 = 強いネガティブ（疲弊・消耗・危機的状態）
+
+スコアは必ず以下の5段階のいずれかの帯域に収まるよう算出してください。
+
+  0.80〜1.00  GREEN    良好
+  0.60〜0.79  YELLOW   やや注意
+  0.40〜0.59  ORANGE   要観察
+  0.20〜0.39  RED      要対応
+  0.00〜0.19  CRITICAL 緊急対応
+
+---
+
+## スコア帯域のアンカー定義
+
+【GREEN 0.80〜1.00】
+- 成果・進捗が具体的な数値・固有名詞つきで記述されている
+- 勝ちと負けが両方明確に記述され、学びや改善策もある
+- 感謝・協力者への言及が自然に含まれている
+- 明日の計画が具体的かつ能動的
+
+【YELLOW 0.60〜0.79】
+- 成果はあるが記述がやや淡白・形式的
+- 「一応」「ひとまず」等の薄い達成感が混在
+- 勝ちか負けのどちらか一方のみ記述されている
+
+【ORANGE 0.40〜0.59】
+- 「なんとか」「ひとまず」「一応」が複数回登場
+- 振り返りが形式的で具体性が薄い
+- 勝ち負けの振り返りがほぼない
+
+【RED 0.20〜0.39】
+- 失敗・遅延の報告があり、改善策がない
+- 体調・疲労への言及がある
+- 人物名・感謝表現が消えている
+
+【CRITICAL 0.00〜0.19】
+- 文章が極端に短い
+- 謝罪・自己否定が含まれる
+- 体調不良・疲弊の直接言及
+
+---
+
+## 振り返りスコアの定義（reflection_score）
+
+0.80〜1.00: 勝ち・負けが具体的に明示され、学びや翌日の改善計画まで記述されている
+0.60〜0.79: 勝ち・負けはあるが、改善計画が不明確
+0.40〜0.59: 勝ちのみ、または負けのみの記述
+0.20〜0.39: 振り返りが形式的で具体性がない
+0.00〜0.19: ほぼ振り返りがない、または日報が非常に短い
+
+---
+
+## 入力
+
+夕方の日報テキスト:
+{DAILY_REPORT_TEXT}
+
+前回スコア（参考）: {PREVIOUS_SCORE}  ※初回または不明の場合は null
+
+---
+
+## 出力フォーマット
+
+JSONのみ返すこと。前置き・説明・コードブロック記号（\`\`\`）は一切不要。
+
+{
+  "score": 0.00,
+  "label": "GREEN",
+  "summary": "100字以内。断定せず観察として記述。",
+  "praise": "褒めポイント。具体的な成果や前向きな姿勢をもとに、マネージャーが声かけする際に使える表現で1〜2文。",
+  "follow": "フォローポイント。懸念点や気になる点があれば1〜2文。特になければnull。",
+  "wins": "今日の勝ち。成功した点・できたことを具体的に1〜3文。振り返り記述がない場合はnull。",
+  "losses": "今日の負け。課題・改善すべき点を具体的に1〜3文。振り返り記述がない場合はnull。",
+  "reflection_score": 0.00,
+  "growth_note": "成長の観点・気づき。前回からの変化や学びを1〜2文。特になければnull。"
+}
+
+labelの値は GREEN / YELLOW / ORANGE / RED / CRITICAL のいずれか。
+praiseは必ず記述すること。followは懸念がない場合はnullとすること。`;
+
 const DEFAULT_CONFIG = [
   { key: 'late_night_hour',         value: '22',          description: '深夜フラグの閾値（この時間以降=深夜, 0-23 JST）' },
   { key: 'sentiment_threshold',     value: '0.35',        description: '感情スコアの下限（これ未満でフラグ, 0.0-1.0）' },
@@ -327,6 +503,8 @@ const DEFAULT_CONFIG = [
   { key: 'workflow_bot_id',         value: '',            description: 'ワークフローBotのID（空=全ユーザーメッセージを収集）' },
   { key: 'user_id_regex',           value: '<@(U[A-Z0-9]+)>', description: '投稿者IDをテキストから抽出するregex（グループ1がuser_id）' },
   { key: 'sentiment_prompt', value: SENTIMENT_PROMPT_DEFAULT, description: 'Claude に送る感情分析プロンプト（自由に編集可）' },
+  { key: 'evening_prompt',   value: EVENING_PROMPT_DEFAULT,   description: '夜の日報分析プロンプト（勝ち/負け/振り返りスコア付き）' },
+  { key: 'morning_prompt',   value: MORNING_PROMPT_DEFAULT,   description: '朝の日報分析プロンプト（意欲・計画の評価）' },
 ];
 
 function seedConfig() {
@@ -340,32 +518,56 @@ function seedConfig() {
     _db.prepare("UPDATE config SET value = ? WHERE key = 'sentiment_prompt'").run(SENTIMENT_PROMPT_DEFAULT);
     console.log('[db] sentiment_prompt を新デフォルトにアップグレードしました（praise/follow フィールド追加）');
   }
+  // evening_prompt / morning_prompt の初期シード（INSERT OR IGNORE で追加済み）
+  const ep = _db.prepare("SELECT value FROM config WHERE key = 'evening_prompt'").get();
+  if (!ep) {
+    _db.prepare("INSERT OR IGNORE INTO config (key, value, description) VALUES (?, ?, ?)").run('evening_prompt', EVENING_PROMPT_DEFAULT, '夜の日報分析プロンプト（勝ち/負け/振り返りスコア付き）');
+    console.log('[db] evening_prompt を初期シードしました');
+  }
+  const mp = _db.prepare("SELECT value FROM config WHERE key = 'morning_prompt'").get();
+  if (!mp) {
+    _db.prepare("INSERT OR IGNORE INTO config (key, value, description) VALUES (?, ?, ?)").run('morning_prompt', MORNING_PROMPT_DEFAULT, '朝の日報分析プロンプト（意欲・計画の評価）');
+    console.log('[db] morning_prompt を初期シードしました');
+  }
 }
 
 // ── daily_reports ────────────────────────────────────────────────────────────
 
-function upsertReport({ userId, reportDate, postedAt, postedHour, text, charCount, ts, channelId }) {
+function upsertReport({ userId, reportDate, reportType = 'evening', postedAt, postedHour, text, charCount, ts, channelId }) {
   const db = getDb();
-  // 同じtsが別の report_date で保存されている場合は削除（27時制による日付訂正）
-  const existing = db.prepare('SELECT report_date FROM daily_reports WHERE ts = ?').get(ts);
-  if (existing && existing.report_date !== reportDate) {
-    console.log(`[db] 日付訂正: ts=${ts} を ${existing.report_date} → ${reportDate} に移動`);
+  const rt = reportType || 'evening';
+  // 同じtsが別の report_date/type で保存されている場合は削除（27時制による日付訂正）
+  const existing = db.prepare('SELECT report_date, report_type FROM daily_reports WHERE ts = ?').get(ts);
+  if (existing && (existing.report_date !== reportDate || existing.report_type !== rt)) {
+    console.log(`[db] 日付/種別訂正: ts=${ts} を ${existing.report_date}/${existing.report_type} → ${reportDate}/${rt} に移動`);
     db.prepare('DELETE FROM daily_reports WHERE ts = ?').run(ts);
   }
   return db.prepare(`
-    INSERT INTO daily_reports (user_id, report_date, posted_at, posted_hour, text, char_count, ts, channel_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(user_id, report_date) DO UPDATE SET
+    INSERT INTO daily_reports (user_id, report_date, report_type, posted_at, posted_hour, text, char_count, ts, channel_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(user_id, report_date, report_type) DO UPDATE SET
       posted_at   = excluded.posted_at,
       posted_hour = excluded.posted_hour,
       text        = excluded.text,
       char_count  = excluded.char_count,
       ts          = excluded.ts
-  `).run(userId, reportDate, postedAt, postedHour, text, charCount, ts, channelId);
+  `).run(userId, reportDate, rt, postedAt, postedHour, text, charCount, ts, channelId);
+}
+
+function getReportByType(userId, date, type) {
+  return getDb().prepare('SELECT * FROM daily_reports WHERE user_id = ? AND report_date = ? AND report_type = ?').get(userId, date, type);
+}
+
+function getRecentReportsByType(userId, type, limit) {
+  return getDb().prepare(
+    'SELECT * FROM daily_reports WHERE user_id = ? AND report_type = ? ORDER BY report_date DESC LIMIT ?'
+  ).all(userId, type, limit);
 }
 
 function getReport(userId, date) {
-  return getDb().prepare('SELECT * FROM daily_reports WHERE user_id = ? AND report_date = ?').get(userId, date);
+  // 夕方を優先、なければ朝
+  const db = getDb();
+  return db.prepare("SELECT * FROM daily_reports WHERE user_id = ? AND report_date = ? ORDER BY CASE report_type WHEN 'evening' THEN 0 ELSE 1 END LIMIT 1").get(userId, date);
 }
 
 function getRecentReports(userId, limit) {
@@ -380,10 +582,12 @@ function upsertCheck(data) {
   return getDb().prepare(`
     INSERT INTO condition_checks
       (user_id, check_date, posted, late_night_flag, late_post_flag, sentiment_flag, sentiment_score,
-       volume_flag, volume_ratio, flag_count, signal, sentiment_summary, praise_points, follow_points)
+       volume_flag, volume_ratio, flag_count, signal, sentiment_summary, praise_points, follow_points,
+       morning_posted, evening_posted, dual_post_flag, morning_summary, wins_text, losses_text, reflection_score, growth_note)
     VALUES
       (@userId, @checkDate, @posted, @lateNightFlag, @latePostFlag, @sentimentFlag, @sentimentScore,
-       @volumeFlag, @volumeRatio, @flagCount, @signal, @sentimentSummary, @praisePoints, @followPoints)
+       @volumeFlag, @volumeRatio, @flagCount, @signal, @sentimentSummary, @praisePoints, @followPoints,
+       @morningPosted, @eveningPosted, @dualPostFlag, @morningSummary, @winsText, @lossesText, @reflectionScore, @growthNote)
     ON CONFLICT(user_id, check_date) DO UPDATE SET
       posted             = excluded.posted,
       late_night_flag    = excluded.late_night_flag,
@@ -397,6 +601,14 @@ function upsertCheck(data) {
       sentiment_summary  = excluded.sentiment_summary,
       praise_points      = excluded.praise_points,
       follow_points      = excluded.follow_points,
+      morning_posted     = excluded.morning_posted,
+      evening_posted     = excluded.evening_posted,
+      dual_post_flag     = excluded.dual_post_flag,
+      morning_summary    = excluded.morning_summary,
+      wins_text          = excluded.wins_text,
+      losses_text        = excluded.losses_text,
+      reflection_score   = excluded.reflection_score,
+      growth_note        = excluded.growth_note,
       created_at         = datetime('now')
   `).run(data);
 }
@@ -593,7 +805,7 @@ function deleteInvitationByEmail(email) {
 
 module.exports = {
   getDb,
-  upsertReport, getReport, getRecentReports, getReportsForDateRange,
+  upsertReport, getReport, getReportByType, getRecentReports, getRecentReportsByType, getReportsForDateRange,
   upsertCheck, getChecksForDate, getChecksForDateRange, getLatestCheck,
   upsertMember, getMember, getActiveMembers, getAllMembersRaw, setMemberActive, setMemberGroup,
   createGroup, getGroup, getAllGroups, getTopGroups, getChildGroups, deleteGroup,

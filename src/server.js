@@ -3,6 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const db = require('./db');
+// getReportByType is available via db module
 const cfg = require('./config');
 const { runCheckForDate, todayJst } = require('./checker');
 const { syncChannelMembers } = require('./members');
@@ -204,7 +205,7 @@ function createServer() {
 
       const enriched = allMembers.map(member => {
         const check = checkMap[member.user_id] || null;
-        const report = check?.posted ? db.getReport(member.user_id, date) : null;
+        const report = check?.posted ? db.getReport(member.user_id, date) : null;  // 夕方優先
         let group = null;
         if (member.group_id && groupMap[member.group_id]) {
           const g = groupMap[member.group_id];
@@ -217,6 +218,8 @@ function createServer() {
           group = { id: g.id, name: g.name, parent };
         }
         const signal = calcSig(check);
+        const morningReport = check?.posted ? db.getReportByType(member.user_id, date, 'morning') : null;
+        const eveningReport = check?.posted ? db.getReportByType(member.user_id, date, 'evening') : null;
         return {
           user: { user_id: member.user_id, display_name: member.display_name, real_name: member.real_name, group },
           check: check ? {
@@ -224,14 +227,24 @@ function createServer() {
             late_night_flag: check.late_night_flag, late_post_flag: check.late_post_flag || 0,
             sentiment_flag: check.sentiment_flag,
             sentiment_score: check.sentiment_score, volume_flag: check.volume_flag,
-            volume_ratio: check.volume_ratio, posted_at: check.posted_at,
+            volume_ratio: check.volume_ratio,
             signal,
             sentiment_summary: check.sentiment_summary || null,
             praise_points: check.praise_points || null,
             follow_points: check.follow_points || null,
-            composite: (check.late_night_flag||0) + (check.late_post_flag||0) + (check.sentiment_flag||0) + (check.volume_flag||0),
+            morning_posted: check.morning_posted || 0,
+            evening_posted: check.evening_posted || 0,
+            dual_post_flag: check.dual_post_flag || 0,
+            morning_summary: check.morning_summary || null,
+            wins_text: check.wins_text || null,
+            losses_text: check.losses_text || null,
+            reflection_score: check.reflection_score != null ? check.reflection_score : null,
+            growth_note: check.growth_note || null,
+            composite: (check.late_night_flag||0) + (check.late_post_flag||0) + (check.sentiment_flag||0) + (check.volume_flag||0) + (check.dual_post_flag||0),
           } : null,
           report: report ? { char_count: report.char_count, posted_at: report.posted_at, text: report.text } : null,
+          morning_report: morningReport ? { char_count: morningReport.char_count, posted_at: morningReport.posted_at, text: morningReport.text } : null,
+          evening_report: eveningReport ? { char_count: eveningReport.char_count, posted_at: eveningReport.posted_at, text: eveningReport.text } : null,
         };
       });
 
@@ -267,12 +280,15 @@ function createServer() {
         ? (orgScore <= 0.35 ? 'red' : orgScore < 0.60 ? 'yellow' : 'green')
         : (redCount > 0 ? 'red' : yellowCount > 0 ? 'yellow' : greenCount > 0 ? 'green' : null);
       const postingRate = enriched.length ? postedMs.length / enriched.length : 0;
+      const dualPostedMs = enriched.filter(m => m.check?.morning_posted && m.check?.evening_posted);
+      const dualPostRate = enriched.length ? dualPostedMs.length / enriched.length : 0;
       const opct = Math.round(postingRate * 100);
+      const dpct = Math.round(dualPostRate * 100);
       const ocond = orgSignal === 'red' ? '要警戒' : orgSignal === 'yellow' ? '要注意' : '良好';
       const oScorePart = orgScore != null ? `平均スコア${orgScore.toFixed(2)}（${ocond}）` : `コンディション${orgSignal ? ocond : '計算中'}`;
       const oFlags = [redCount > 0 ? `赤信号${redCount}名` : '', yellowCount > 0 ? `黄信号${yellowCount}名` : ''].filter(Boolean);
-      const orgSummary = `投稿率${opct}%・${oScorePart}${oFlags.length ? '。' + oFlags.join('・') + 'が要注意' : ''}。`;
-      const orgStats = { score: orgScore, signal: orgSignal, posting_rate: postingRate, summary: orgSummary };
+      const orgSummary = `投稿率${opct}%・二回投稿率${dpct}%・${oScorePart}${oFlags.length ? '。' + oFlags.join('・') + 'が要注意' : ''}。`;
+      const orgStats = { score: orgScore, signal: orgSignal, posting_rate: postingRate, dual_post_rate: dualPostRate, summary: orgSummary };
 
       res.json({
         date,
@@ -414,6 +430,12 @@ function createServer() {
             sentiment_flag:  check?.sentiment_flag   ?? 0,
             sentiment_score: check?.sentiment_score  ?? null,
             volume_flag:     check?.volume_flag      ?? 0,
+            morning_posted:  check?.morning_posted   ?? 0,
+            evening_posted:  check?.evening_posted   ?? 0,
+            dual_post_flag:  check?.dual_post_flag   ?? 0,
+            reflection_score: check?.reflection_score ?? null,
+            wins_text:       check?.wins_text        ?? null,
+            losses_text:     check?.losses_text      ?? null,
             posted_at:  report?.posted_at || null,
             char_count: report?.char_count ?? null,
             is_future:  day > today,
@@ -604,24 +626,33 @@ function createServer() {
 
         const sig     = check.signal || '不明';
         const score   = check.sentiment_score != null ? check.sentiment_score.toFixed(2) : '—';
+        const refScore = check.reflection_score != null ? check.reflection_score.toFixed(2) : '—';
         const summary = check.sentiment_summary ? `「${check.sentiment_summary}」` : 'なし';
         const flags   = [
           check.late_night_flag >= 2 ? '深夜投稿(23〜5時)' : check.late_night_flag === 1 ? '夜間投稿(22時台)' : '',
-          check.late_post_flag ? '投稿遅れ(朝〜昼)' : '',
+          check.dual_post_flag ? `片方のみ投稿(朝=${check.morning_posted?'✓':'×'}/夜=${check.evening_posted?'✓':'×'})` : '',
+          check.late_post_flag ? '投稿遅れ' : '',
           check.volume_flag ? `文量${check.volume_ratio < 1 ? '減少' : '増加'}(${Math.abs(Math.round((check.volume_ratio - 1) * 100))}%)` : '',
         ].filter(Boolean).join(', ');
+        const winsLine   = check.wins_text   ? `\n  本日の勝ち: ${check.wins_text}` : '';
+        const lossesLine = check.losses_text ? `\n  本日の負け: ${check.losses_text}` : '';
 
         // 直近7日の推移（新→旧）
         const trend = (memberTrends[m.user_id] || [])
           .filter(c => c.posted && c.check_date !== date)
           .sort((a, b) => b.check_date.localeCompare(a.check_date))
           .slice(0, 7)
-          .map(c => c.signal === 'red' ? '🔴' : c.signal === 'yellow' ? '🟡' : '🟢')
-          .join('');
+          .map(c => {
+            const em = c.signal === 'red' ? '🔴' : c.signal === 'yellow' ? '🟡' : '🟢';
+            const dp = (c.morning_posted && c.evening_posted) ? '☀️🌙' : c.morning_posted ? '☀️' : c.evening_posted ? '🌙' : '📭';
+            return `${em}${dp}`;
+          })
+          .join(' ');
 
         return `【${name}】(${group})
-  本日: 信号=${sig}, 感情スコア=${score}${flags ? ', フラグ=[' + flags + ']' : ''}
-  日報サマリー: ${summary}
+  本日: 信号=${sig}, 感情=${score}, 振返スコア=${refScore}${flags ? ', フラグ=[' + flags + ']' : ''}
+  投稿状況: 朝=${check.morning_posted?'✓':'×'} / 夜=${check.evening_posted?'✓':'×'}
+  日報サマリー: ${summary}${winsLine}${lossesLine}
   直近7日推移: ${trend || 'データなし'}`;
       });
 
