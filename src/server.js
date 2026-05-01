@@ -311,6 +311,103 @@ function createServer() {
     }
   });
 
+  // ── Wins/Losses range ────────────────────────────────────────────────────
+  server.get('/api/wins-range', requireAuthApi, (req, res) => {
+    try {
+      const { from, to } = req.query;
+      if (!from || !to) return res.status(400).json({ error: 'from/to required' });
+
+      const allGroups  = db.getAllGroups();
+      const allMembers = db.getActiveMembers();
+      const checks     = db.getChecksForDateRange(from, to);
+      const groupMap   = Object.fromEntries(allGroups.map(g => [g.id, g]));
+
+      // 日付リストを生成
+      const dates = [];
+      let d = new Date(from + 'T00:00:00Z');
+      const end = new Date(to + 'T00:00:00Z');
+      while (d <= end) {
+        dates.push(d.toISOString().slice(0, 10));
+        d.setUTCDate(d.getUTCDate() + 1);
+      }
+
+      // user別にチェックをインデックス化
+      const checksByUser = {};
+      for (const c of checks) {
+        if (!checksByUser[c.user_id]) checksByUser[c.user_id] = {};
+        checksByUser[c.user_id][c.check_date] = c;
+      }
+
+      const calcSig = c => {
+        if (!c?.posted) return null;
+        if (c.late_night_flag >= 2) return 'red';
+        const s = c.sentiment_score;
+        if (s != null) { if (s <= 0.35) return 'red'; }
+        if (c.late_night_flag >= 1) return 'yellow';
+        if (s != null) { if (s < 0.60) return 'yellow'; }
+        if (c.late_post_flag) return 'yellow';
+        if (c.volume_flag)    return 'yellow';
+        return 'green';
+      };
+
+      const members = allMembers.map(member => {
+        const userChecks = checksByUser[member.user_id] || {};
+        let group = null;
+        if (member.group_id && groupMap[member.group_id]) {
+          const g = groupMap[member.group_id];
+          let parent = null;
+          if (g.parent_id && groupMap[g.parent_id]) {
+            const p = groupMap[g.parent_id];
+            parent = { id: p.id, name: p.name };
+          }
+          group = { id: g.id, name: g.name, parent };
+        }
+
+        const days = {};
+        for (const date of dates) {
+          const c = userChecks[date];
+          days[date] = c ? {
+            posted: c.posted,
+            wins_text:        c.wins_text        || null,
+            losses_text:      c.losses_text       || null,
+            reflection_score: c.reflection_score != null ? c.reflection_score : null,
+            signal:           calcSig(c),
+            morning_posted:   c.morning_posted    || 0,
+            evening_posted:   c.evening_posted    || 0,
+            dual_post_flag:   c.dual_post_flag    || 0,
+            sentiment_score:  c.sentiment_score,
+            sentiment_summary: c.sentiment_summary || null,
+          } : { posted: 0 };
+        }
+
+        const postedDays  = Object.values(days).filter(d => d.posted);
+        const winsDays    = postedDays.filter(d => d.wins_text);
+        const lossesDays  = postedDays.filter(d => d.losses_text);
+        const refScores   = postedDays.map(d => d.reflection_score).filter(s => s != null);
+        const sigCounts   = { red: 0, yellow: 0, green: 0 };
+        for (const d of postedDays) { if (d.signal) sigCounts[d.signal] = (sigCounts[d.signal] || 0) + 1; }
+
+        return {
+          user: { user_id: member.user_id, display_name: member.display_name, real_name: member.real_name, group },
+          days,
+          summary: {
+            wins_count:    winsDays.length,
+            losses_count:  lossesDays.length,
+            posted_count:  postedDays.length,
+            total_days:    dates.length,
+            avg_reflection: refScores.length ? refScores.reduce((a, b) => a + b, 0) / refScores.length : null,
+            signals:       sigCounts,
+          },
+        };
+      });
+
+      res.json({ from, to, dates, members });
+    } catch (e) {
+      console.error('/api/wins-range error:', e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // ── Check ────────────────────────────────────────────────────────────────
   server.post('/api/check/run', requireAdmin, async (req, res) => {
     const date = req.body?.date || todayJst();

@@ -512,6 +512,57 @@ select.inp { cursor: pointer; }
   background: #fff5f5; border: 1.5px solid var(--c-redBr); border-radius: 8px;
   padding: 6px 12px; font-size: 11.5px; color: var(--c-red); font-weight: 600;
 }
+/* 期間タブ */
+.wl-period-tabs {
+  display: flex; gap: 3px;
+  background: rgba(0,0,0,.06); padding: 3px; border-radius: 8px;
+}
+.wl-period-tab {
+  padding: 5px 14px; border-radius: 6px; font-size: 12.5px; font-weight: 600;
+  cursor: pointer; transition: background .12s, color .12s; color: var(--c-t3);
+  border: none; background: transparent;
+}
+.wl-period-tab.active {
+  background: #fff; color: var(--c-t1);
+  box-shadow: 0 1px 3px rgba(0,0,0,.12);
+}
+/* 週/月ナビゲーション */
+.wl-period-nav { display: flex; align-items: center; gap: 6px; }
+.wl-period-range {
+  font-size: 12px; font-weight: 700; color: var(--c-t2);
+  min-width: 154px; text-align: center;
+}
+.wl-nav-btn {
+  width: 28px; height: 28px; border: 1.5px solid var(--c-bdr);
+  border-radius: 6px; background: #fff; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; color: var(--c-t2); line-height: 1;
+}
+.wl-nav-btn:hover { background: var(--c-bg); }
+/* 週次タイムライン */
+.wl-week-day {
+  display: grid; grid-template-columns: 44px 10px 1fr;
+  gap: 8px; align-items: start;
+  padding: 7px 14px; border-top: 1px solid var(--c-bdr2);
+}
+.wl-week-day:first-child { border-top: none; }
+.wl-day-lbl { font-size: 10.5px; font-weight: 700; color: var(--c-t3); padding-top: 1px; }
+.wl-day-dot {
+  width: 8px; height: 8px; border-radius: 50%; margin-top: 3px; flex-shrink: 0;
+  background: var(--c-bdr);
+}
+.wl-day-dot.red    { background: var(--c-red); }
+.wl-day-dot.yellow { background: var(--c-amb); }
+.wl-day-dot.green  { background: var(--c-grn); }
+.wl-day-content { min-width: 0; font-size: 11.5px; line-height: 1.5; }
+.wl-day-w { color: #1d4ed8; }
+.wl-day-l { color: #7c3aed; margin-top: 2px; }
+.wl-day-none { color: var(--c-t4); font-style: italic; }
+/* 月次リスト */
+.wl-month-list { display: flex; flex-direction: column; gap: 6px; }
+.wl-month-entry { display: grid; grid-template-columns: 32px 1fr; gap: 6px; align-items: start; }
+.wl-month-date { font-size: 10px; font-weight: 700; color: var(--c-t4); padding-top: 2px; }
+.wl-month-wl { font-size: 11.5px; line-height: 1.5; }
 
 /* ── バディくんチャット ── */
 .buddy-toggle-btn {
@@ -716,6 +767,8 @@ const S = {
   role:      'viewer',
   email:     '',
   displayName: '',
+  winsPeriod: 'daily',
+  winsRange:  {},
 };
 
 function today() {
@@ -1615,39 +1668,120 @@ function renderMembersV() {
 }
 
 /* ════════════════════════════════════════
-   勝ち負けBoard
+   勝ち負けBoard — 日次 / 週次 / 月次
 ════════════════════════════════════════ */
-async function fetchWinsIfNeeded() {
-  if (!S.dash || S.dash.date !== S.date) await fetchDash();
+
+/* ─── 日付ヘルパー ─── */
+function wlWeekRange(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00+09:00');
+  const day = d.getDay();
+  const diffToMon = day === 0 ? -6 : 1 - day;
+  const mon = new Date(d); mon.setDate(d.getDate() + diffToMon);
+  const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+  return { from: mon.toISOString().slice(0, 10), to: sun.toISOString().slice(0, 10) };
 }
 
+function wlMonthRange(dateStr) {
+  const [y, m] = dateStr.split('-').map(Number);
+  const from = `${y}-${String(m).padStart(2,'0')}-01`;
+  const lastDay = new Date(y, m, 0).getDate();
+  return { from, to: `${y}-${String(m).padStart(2,'0')}-${lastDay}` };
+}
+
+function wlShiftDate(dateStr, period, dir) {
+  const d = new Date(dateStr + 'T12:00:00+09:00');
+  if (period === 'weekly')       d.setDate(d.getDate() + dir * 7);
+  else if (period === 'monthly') d.setMonth(d.getMonth() + dir);
+  return d.toISOString().slice(0, 10);
+}
+
+async function fetchWinsRange(from, to) {
+  const key = `${from}_${to}`;
+  if (S.winsRange[key]) return S.winsRange[key];
+  const r = await api('GET', `/api/wins-range?from=${from}&to=${to}`);
+  S.winsRange[key] = r;
+  return r;
+}
+
+/* ─── エントリーポイント ─── */
 function renderWinsV() {
-  if (!S.dash || S.dash.date !== S.date) {
-    fetchDash().then(render);
-    return `<div class="spin-wrap"><div class="spinner"></div></div>`;
+  const period = S.winsPeriod || 'daily';
+
+  if (period === 'daily') {
+    if (!S.dash || S.dash.date !== S.date) {
+      fetchDash().then(render);
+      return `<div class="spin-wrap"><div class="spinner"></div></div>`;
+    }
+    return wlBar(period) + wlHeroDaily(S.dash) + wlBodyDaily(S.dash);
   }
 
-  const { members, group_tree, ungrouped } = S.dash;
-  const posted = members.filter(m => m.check?.posted);
-  const withWins    = posted.filter(m => m.check?.wins_text);
-  const withLosses  = posted.filter(m => m.check?.losses_text);
-  const withBoth    = posted.filter(m => m.check?.wins_text && m.check?.losses_text);
-  const notPosted   = members.filter(m => !m.check?.posted);
-  const refScores   = posted.map(m => m.check?.reflection_score).filter(s => s != null);
-  const avgRef      = refScores.length ? refScores.reduce((a,b) => a+b, 0) / refScores.length : null;
+  const range = period === 'weekly' ? wlWeekRange(S.date) : wlMonthRange(S.date);
+  const key   = `${range.from}_${range.to}`;
+  if (!S.winsRange[key]) {
+    fetchWinsRange(range.from, range.to).then(render);
+    return `<div class="spin-wrap"><div class="spinner"></div></div>`;
+  }
+  const data = S.winsRange[key];
+  return wlBar(period, range) + (period === 'weekly' ? wlBodyWeekly(data) : wlBodyMonthly(data));
+}
 
-  const bar = `<div class="topbar">
+/* ─── トップバー ─── */
+function wlBar(period, range) {
+  const tabs = ['daily','weekly','monthly'].map(p => {
+    const lbl = p === 'daily' ? '日次' : p === 'weekly' ? '週次' : '月次';
+    return `<button class="wl-period-tab${p === period ? ' active' : ''}" onclick="S.winsPeriod='${p}';render()">${lbl}</button>`;
+  }).join('');
+
+  let nav = '';
+  if (period === 'daily') {
+    nav = `<input class="inp" type="date" id="w-inp" value="${S.date}" max="${today()}" style="width:148px">`;
+  } else {
+    const prev = wlShiftDate(S.date, period, -1);
+    const next  = wlShiftDate(S.date, period, +1);
+    const isFuture = next > today();
+    let label = '';
+    if (period === 'weekly' && range) {
+      const f = range.from.slice(5).replace('-','/'), t = range.to.slice(5).replace('-','/');
+      label = `${range.from.slice(0,7)} &nbsp;${f}〜${t}`;
+    } else if (period === 'monthly' && range) {
+      const [y,m] = range.from.split('-');
+      label = `${y}年${parseInt(m)}月`;
+    }
+    nav = `<div class="wl-period-nav">
+      <button class="wl-nav-btn" onclick="S.date='${prev}';S.winsRange={};render()">◀</button>
+      <div class="wl-period-range">${label}</div>
+      <button class="wl-nav-btn" onclick="S.date='${next}';S.winsRange={};render()" ${isFuture ? 'disabled style="opacity:.4"' : ''}>▶</button>
+    </div>`;
+  }
+
+  const subLabel = period === 'daily' ? S.date + ' — 今日の勝ち・負け'
+    : period === 'weekly' ? '週次集計 — 曜日ごとの勝ち・負け'
+    : '月次集計 — 月間の勝ち・負け一覧';
+
+  return `<div class="topbar">
     <div class="tb-left">
       <div class="tb-title">🏆 勝ち負けBoard</div>
-      <div class="tb-sub"><span class="live-dot"></span>${S.date} — チームの勝ち・負けを一覧</div>
+      <div class="tb-sub"><span class="live-dot"></span>${subLabel}</div>
     </div>
-    <div class="tb-right">
-      <input class="inp" type="date" id="w-inp" value="${S.date}" max="${today()}" style="width:148px">
-      <button class="btn btn-sec" onclick="fetchDash().then(render)">↺ 更新</button>
+    <div class="tb-right" style="gap:8px;flex-wrap:wrap;justify-content:flex-end">
+      <div class="wl-period-tabs">${tabs}</div>
+      ${nav}
+      <button class="btn btn-sec" onclick="${period === 'daily' ? 'fetchDash().then(render)' : 'S.winsRange={};render()'}">↺ 更新</button>
     </div>
   </div>`;
+}
 
-  const hero = `<div class="wl-hero">
+/* ─── 日次ヒーロー ─── */
+function wlHeroDaily(dash) {
+  const posted     = dash.members.filter(m => m.check?.posted);
+  const withWins   = posted.filter(m => m.check?.wins_text);
+  const withLosses = posted.filter(m => m.check?.losses_text);
+  const withBoth   = posted.filter(m => m.check?.wins_text && m.check?.losses_text);
+  const notPosted  = dash.members.filter(m => !m.check?.posted);
+  const refScores  = posted.map(m => m.check?.reflection_score).filter(s => s != null);
+  const avgRef     = refScores.length ? refScores.reduce((a,b) => a+b, 0) / refScores.length : null;
+
+  return `<div class="wl-hero">
     <div class="wl-hero-card wins">
       <div class="wl-hero-num" style="color:#1d4ed8">${withWins.length}</div>
       <div class="wl-hero-lbl" style="color:#1d4ed8">🏆 勝ち</div>
@@ -1669,108 +1803,238 @@ function renderWinsV() {
       <div class="wl-hero-lbl" style="color:var(--c-red)">📭 未投稿</div>
     </div>` : ''}
   </div>`;
+}
 
-  // メンバーカードを生成
-  function renderWlCard(m) {
-    const { user, check } = m;
-    const name  = user.real_name || user.display_name || user.user_id;
-    const grp   = user.group ? (user.group.parent?.name ? `${user.group.parent.name} › ${user.group.name}` : user.group.name) : '';
-    const sig   = check?.signal || null;
-    const ref   = check?.reflection_score;
-    const mPost = check?.morning_posted ? '☀️' : '';
-    const ePost = check?.evening_posted ? '🌙' : '';
-    const postIco = (mPost || ePost) ? `${mPost}${ePost}` : '📭';
+/* ─── 日次メンバーカード ─── */
+function renderWlCard(m) {
+  const { user, check } = m;
+  const name = user.real_name || user.display_name || user.user_id;
+  const grp  = user.group ? (user.group.parent?.name ? `${user.group.parent.name} › ${user.group.name}` : user.group.name) : '';
+  const sig  = check?.signal || null;
+  const ref  = check?.reflection_score;
+  const postIco = `${check?.morning_posted ? '☀️' : ''}${check?.evening_posted ? '🌙' : ''}` || '📭';
 
-    if (!check?.posted) {
-      return `<div class="wl-card sig-none">
-        <div class="wl-card-hd">
-          <div>
-            <div class="wl-card-name" style="color:var(--c-t3)">${name}</div>
-            ${grp ? `<div class="wl-card-meta">${grp}</div>` : ''}
-          </div>
-          <span class="sig-pill" style="background:#f1f5f9;color:var(--c-t4)">📭 未投稿</span>
-        </div>
-      </div>`;
-    }
-
-    const sigCls = sig === 'red' ? 'sig-red' : sig === 'yellow' ? 'sig-yellow' : sig === 'green' ? 'sig-green' : 'sig-none';
-    const sigBadge = sig === 'red' ? `<span class="sig-pill sig-r">🔴</span>`
-      : sig === 'yellow' ? `<span class="sig-pill sig-y">🟡</span>`
-      : sig === 'green'  ? `<span class="sig-pill sig-g">🟢</span>` : '';
-
-    const refHtml = ref != null ? `<div class="wl-refl-bar">
-      <span style="font-size:10px;color:var(--c-t3);min-width:60px">📝 振返 ${ref.toFixed(2)}</span>
-      <div class="wl-refl-track"><div class="wl-refl-fill" style="width:${Math.round(ref*100)}%"></div></div>
-    </div>` : '';
-
-    const winsHtml = check.wins_text
-      ? `<div class="wl-wins-box">
-          <div class="wl-box-lbl">🏆 WINS — 今日の勝ち</div>
-          <div class="wl-box-txt">${check.wins_text}</div>
-        </div>`
-      : `<div class="wl-no-data">🏆 勝ちの記録なし</div>`;
-
-    const lossesHtml = check.losses_text
-      ? `<div class="wl-losses-box">
-          <div class="wl-box-lbl">💪 LOSSES — 今日の負け</div>
-          <div class="wl-box-txt">${check.losses_text}</div>
-        </div>`
-      : `<div class="wl-no-data">💪 負けの記録なし</div>`;
-
-    const summaryHtml = check.sentiment_summary
-      ? `<div style="font-size:11.5px;color:var(--c-t3);font-style:italic;border-top:1px solid var(--c-bdr2);padding-top:6px">${check.sentiment_summary}</div>` : '';
-
-    return `<div class="wl-card ${sigCls}">
+  if (!check?.posted) {
+    return `<div class="wl-card sig-none">
       <div class="wl-card-hd">
         <div>
-          <div class="wl-card-name">${name}</div>
-          ${grp ? `<div class="wl-card-meta">${grp} &nbsp;·&nbsp; ${postIco}</div>` : `<div class="wl-card-meta">${postIco}</div>`}
+          <div class="wl-card-name" style="color:var(--c-t3)">${name}</div>
+          ${grp ? `<div class="wl-card-meta">${grp}</div>` : ''}
         </div>
-        <div style="display:flex;align-items:center;gap:6px">
-          ${sigBadge}
-        </div>
-      </div>
-      <div class="wl-card-body">
-        ${winsHtml}
-        ${lossesHtml}
-        ${refHtml}
-        ${summaryHtml}
+        <span class="sig-pill" style="background:#f1f5f9;color:var(--c-t4)">📭 未投稿</span>
       </div>
     </div>`;
   }
 
-  // グループ別に描画
-  function renderWlDept(dept, direct) {
-    const all = [
-      ...(dept.children||[]).flatMap(c => [...(c.members||[]), ...(c.children||[]).flatMap(gc => gc.members||[])]),
-      ...(direct||[])
-    ];
-    if (!all.length) return '';
-    // 信号順: 赤→黄→緑→未投稿
-    const sorted = [...all].sort((a,b) => {
-      const r = m => m.check?.signal==='red'?0:m.check?.signal==='yellow'?1:m.check?.signal==='green'?2:3;
-      return r(a) - r(b);
-    });
-    const posted = all.filter(m => m.check?.posted).length;
-    const wCnt   = all.filter(m => m.check?.wins_text).length;
-    const lCnt   = all.filter(m => m.check?.losses_text).length;
-    return `<div class="sec">
-      <div class="wl-dept-ttl">
-        🏢 ${dept.name}
-        <span style="font-size:12px;font-weight:600;color:var(--c-t3)">${posted}/${all.length}名投稿</span>
-        <span style="font-size:12px;color:#1d4ed8;font-weight:600">🏆${wCnt}</span>
-        <span style="font-size:12px;color:#7c3aed;font-weight:600">💪${lCnt}</span>
-      </div>
-      <div class="wl-grid">${sorted.map(m => renderWlCard(m)).join('')}</div>
-    </div>`;
-  }
+  const sigCls   = sig === 'red' ? 'sig-red' : sig === 'yellow' ? 'sig-yellow' : sig === 'green' ? 'sig-green' : 'sig-none';
+  const sigBadge = sig === 'red'    ? `<span class="sig-pill sig-r">🔴</span>`
+    : sig === 'yellow' ? `<span class="sig-pill sig-y">🟡</span>`
+    : sig === 'green'  ? `<span class="sig-pill sig-g">🟢</span>` : '';
+  const refHtml = ref != null ? `<div class="wl-refl-bar">
+    <span style="font-size:10px;color:var(--c-t3);min-width:60px">📝 振返 ${ref.toFixed(2)}</span>
+    <div class="wl-refl-track"><div class="wl-refl-fill" style="width:${Math.round(ref*100)}%"></div></div>
+  </div>` : '';
+  const winsHtml = check.wins_text
+    ? `<div class="wl-wins-box"><div class="wl-box-lbl">🏆 WINS — 今日の勝ち</div><div class="wl-box-txt">${check.wins_text}</div></div>`
+    : `<div class="wl-no-data">🏆 勝ちの記録なし</div>`;
+  const lossesHtml = check.losses_text
+    ? `<div class="wl-losses-box"><div class="wl-box-lbl">💪 LOSSES — 今日の負け</div><div class="wl-box-txt">${check.losses_text}</div></div>`
+    : `<div class="wl-no-data">💪 負けの記録なし</div>`;
+  const summaryHtml = check.sentiment_summary
+    ? `<div style="font-size:11.5px;color:var(--c-t3);font-style:italic;border-top:1px solid var(--c-bdr2);padding-top:6px">${check.sentiment_summary}</div>` : '';
 
+  return `<div class="wl-card ${sigCls}">
+    <div class="wl-card-hd">
+      <div>
+        <div class="wl-card-name">${name}</div>
+        <div class="wl-card-meta">${grp ? grp + ' &nbsp;·&nbsp; ' : ''}${postIco}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">${sigBadge}</div>
+    </div>
+    <div class="wl-card-body">${winsHtml}${lossesHtml}${refHtml}${summaryHtml}</div>
+  </div>`;
+}
+
+function wlDeptBlock(dept, direct, cardFn) {
+  const all = [
+    ...(dept.children||[]).flatMap(c => [...(c.members||[]), ...(c.children||[]).flatMap(gc => gc.members||[])]),
+    ...(direct||[])
+  ];
+  if (!all.length) return '';
+  const sorted = [...all].sort((a,b) => {
+    const r = m => m.check?.signal==='red'?0:m.check?.signal==='yellow'?1:m.check?.signal==='green'?2:3;
+    return r(a) - r(b);
+  });
+  const pc = all.filter(m => m.check?.posted).length;
+  const wc = all.filter(m => m.check?.wins_text).length;
+  const lc = all.filter(m => m.check?.losses_text).length;
+  return `<div class="sec">
+    <div class="wl-dept-ttl">🏢 ${dept.name}
+      <span style="font-size:12px;font-weight:600;color:var(--c-t3)">${pc}/${all.length}名投稿</span>
+      <span style="font-size:12px;color:#1d4ed8;font-weight:600">🏆${wc}</span>
+      <span style="font-size:12px;color:#7c3aed;font-weight:600">💪${lc}</span>
+    </div>
+    <div class="wl-grid">${sorted.map(m => cardFn(m)).join('')}</div>
+  </div>`;
+}
+
+function wlBodyDaily(dash) {
+  const { group_tree, ungrouped } = dash;
   const depts = [
-    ...group_tree.map(g => renderWlDept(g, g.direct_members)),
-    ...(ungrouped?.length ? [renderWlDept({name:'未分類',children:[]}, ungrouped)] : []),
+    ...group_tree.map(g => wlDeptBlock(g, g.direct_members, renderWlCard)),
+    ...(ungrouped?.length ? [wlDeptBlock({name:'未分類',children:[]}, ungrouped, renderWlCard)] : []),
   ].filter(Boolean).join('');
+  return depts || `<div class="empty"><div class="empty-ico">📭</div><div class="empty-ttl">データなし</div><p>「チェック実行」を押してください。</p></div>`;
+}
 
-  return bar + hero + (depts || `<div class="empty"><div class="empty-ico">📭</div><div class="empty-ttl">データなし</div><p>「チェック実行」を押してください。</p></div>`);
+/* ─── 週次 ─── */
+const WL_DAY_JA = ['日','月','火','水','木','金','土'];
+
+function renderWlWeekCard(m) {
+  const name = m.user.real_name || m.user.display_name || m.user.user_id;
+  const grp  = m.user.group ? (m.user.group.parent?.name ? `${m.user.group.parent.name} › ${m.user.group.name}` : m.user.group.name) : '';
+  const { summary, days } = m;
+  const topSig = summary.signals.red > 0 ? 'sig-red' : summary.signals.yellow > 0 ? 'sig-yellow' : summary.posted_count > 0 ? 'sig-green' : 'sig-none';
+
+  const dayRows = Object.entries(days).map(([date, d]) => {
+    const dow  = WL_DAY_JA[new Date(date + 'T12:00:00Z').getDay()];
+    const mmdd = date.slice(5).replace('-','/');
+    const dotCls = d.posted && d.signal ? d.signal : '';
+    const wTxt = d.wins_text   ? `<div class="wl-day-w">🏆 ${d.wins_text}</div>` : '';
+    const lTxt = d.losses_text ? `<div class="wl-day-l">💪 ${d.losses_text}</div>` : '';
+    const none = !d.posted ? `<div class="wl-day-none">未投稿</div>` : (!wTxt && !lTxt ? `<div class="wl-day-none">記録なし</div>` : '');
+    return `<div class="wl-week-day">
+      <div class="wl-day-lbl">${dow} ${mmdd}</div>
+      <div class="wl-day-dot ${dotCls}"></div>
+      <div class="wl-day-content">${wTxt}${lTxt}${none}</div>
+    </div>`;
+  }).join('');
+
+  const avgRef = summary.avg_reflection;
+  const refBar = avgRef != null ? `<div class="wl-refl-bar" style="padding:0 14px 10px">
+    <span style="font-size:10px;color:var(--c-t3);min-width:60px">📝 振返 ${avgRef.toFixed(2)}</span>
+    <div class="wl-refl-track"><div class="wl-refl-fill" style="width:${Math.round(avgRef*100)}%"></div></div>
+  </div>` : '';
+
+  return `<div class="wl-card ${topSig}">
+    <div class="wl-card-hd">
+      <div>
+        <div class="wl-card-name">${name}</div>
+        <div class="wl-card-meta">${grp ? grp + ' &nbsp;·&nbsp; ' : ''}${summary.posted_count}/${summary.total_days}日投稿 &nbsp;🏆${summary.wins_count} 💪${summary.losses_count}</div>
+      </div>
+    </div>
+    ${dayRows}${refBar}
+  </div>`;
+}
+
+function wlHeroRange(posted, notPosted, totalWins, totalLosses, avgRef, zeroLabel) {
+  return `<div class="wl-hero">
+    <div class="wl-hero-card wins">
+      <div class="wl-hero-num" style="color:#1d4ed8">${totalWins}</div>
+      <div class="wl-hero-lbl" style="color:#1d4ed8">🏆 勝ち（延べ）</div>
+    </div>
+    <div class="wl-hero-card losses">
+      <div class="wl-hero-num" style="color:#7c3aed">${totalLosses}</div>
+      <div class="wl-hero-lbl" style="color:#7c3aed">💪 負け（延べ）</div>
+    </div>
+    <div class="wl-hero-card refl">
+      <div class="wl-hero-num" style="color:#c2410c">${avgRef != null ? avgRef.toFixed(2) : '—'}</div>
+      <div class="wl-hero-lbl" style="color:#c2410c">📝 平均振返スコア</div>
+    </div>
+    ${notPosted.length ? `<div class="wl-hero-card" style="background:#fff5f5;border:2px solid var(--c-redBr)">
+      <div class="wl-hero-num" style="color:var(--c-red)">${notPosted.length}</div>
+      <div class="wl-hero-lbl" style="color:var(--c-red)">📭 ${zeroLabel}</div>
+    </div>` : ''}
+  </div>`;
+}
+
+function wlBodyWeekly(data) {
+  const { members } = data;
+  const posted    = members.filter(m => m.summary.posted_count > 0);
+  const notPosted = members.filter(m => m.summary.posted_count === 0);
+  const totalWins   = posted.reduce((s,m) => s + m.summary.wins_count, 0);
+  const totalLosses = posted.reduce((s,m) => s + m.summary.losses_count, 0);
+  const refScores   = posted.map(m => m.summary.avg_reflection).filter(s => s != null);
+  const avgRef      = refScores.length ? refScores.reduce((a,b) => a+b, 0) / refScores.length : null;
+
+  const sorted = [...members].sort((a,b) => {
+    const r = m => m.summary.signals.red>0?0:m.summary.signals.yellow>0?1:m.summary.posted_count>0?2:3;
+    return r(a) - r(b);
+  });
+  return wlHeroRange(posted, notPosted, totalWins, totalLosses, avgRef, '今週ゼロ')
+    + `<div class="sec"><div class="wl-grid">${sorted.map(m => renderWlWeekCard(m)).join('')}</div></div>`;
+}
+
+/* ─── 月次 ─── */
+function renderWlMonthCard(m) {
+  const name = m.user.real_name || m.user.display_name || m.user.user_id;
+  const grp  = m.user.group ? (m.user.group.parent?.name ? `${m.user.group.parent.name} › ${m.user.group.name}` : m.user.group.name) : '';
+  const { summary, days } = m;
+  const topSig = summary.signals.red > 0 ? 'sig-red' : summary.signals.yellow > 0 ? 'sig-yellow' : summary.posted_count > 0 ? 'sig-green' : 'sig-none';
+  const avgRef = summary.avg_reflection;
+
+  const winEntries  = Object.entries(days).filter(([,d]) => d.wins_text);
+  const lossEntries = Object.entries(days).filter(([,d]) => d.losses_text);
+
+  const wList = winEntries.length
+    ? winEntries.map(([date,d]) => {
+        const mmdd = date.slice(5).replace('-','/');
+        return `<div class="wl-month-entry"><div class="wl-month-date">${mmdd}</div><div class="wl-month-wl" style="color:#1d4ed8">${d.wins_text}</div></div>`;
+      }).join('')
+    : `<div style="font-size:11.5px;color:var(--c-t4);font-style:italic;padding:4px 0">記録なし</div>`;
+
+  const lList = lossEntries.length
+    ? lossEntries.map(([date,d]) => {
+        const mmdd = date.slice(5).replace('-','/');
+        return `<div class="wl-month-entry"><div class="wl-month-date">${mmdd}</div><div class="wl-month-wl" style="color:#7c3aed">${d.losses_text}</div></div>`;
+      }).join('')
+    : `<div style="font-size:11.5px;color:var(--c-t4);font-style:italic;padding:4px 0">記録なし</div>`;
+
+  const refBar = avgRef != null ? `<div class="wl-refl-bar" style="padding-bottom:4px">
+    <span style="font-size:10px;color:var(--c-t3);min-width:60px">📝 振返 ${avgRef.toFixed(2)}</span>
+    <div class="wl-refl-track"><div class="wl-refl-fill" style="width:${Math.round(avgRef*100)}%"></div></div>
+  </div>` : '';
+
+  return `<div class="wl-card ${topSig}">
+    <div class="wl-card-hd">
+      <div>
+        <div class="wl-card-name">${name}</div>
+        <div class="wl-card-meta">${grp ? grp + ' &nbsp;·&nbsp; ' : ''}${summary.posted_count}/${summary.total_days}日投稿</div>
+      </div>
+      <div style="text-align:right;font-size:11.5px;font-weight:700;line-height:1.6">
+        <div style="color:#1d4ed8">🏆 ${summary.wins_count}日</div>
+        <div style="color:#7c3aed">💪 ${summary.losses_count}日</div>
+      </div>
+    </div>
+    <div class="wl-card-body">
+      ${refBar}
+      <div>
+        <div style="font-size:9.5px;font-weight:900;letter-spacing:.06em;color:#1d4ed8;margin-bottom:6px">🏆 WINS</div>
+        <div class="wl-month-list">${wList}</div>
+      </div>
+      <div style="border-top:1px solid var(--c-bdr2);padding-top:8px">
+        <div style="font-size:9.5px;font-weight:900;letter-spacing:.06em;color:#7c3aed;margin-bottom:6px">💪 LOSSES</div>
+        <div class="wl-month-list">${lList}</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function wlBodyMonthly(data) {
+  const { members } = data;
+  const posted    = members.filter(m => m.summary.posted_count > 0);
+  const notPosted = members.filter(m => m.summary.posted_count === 0);
+  const totalWins   = posted.reduce((s,m) => s + m.summary.wins_count, 0);
+  const totalLosses = posted.reduce((s,m) => s + m.summary.losses_count, 0);
+  const refScores   = posted.map(m => m.summary.avg_reflection).filter(s => s != null);
+  const avgRef      = refScores.length ? refScores.reduce((a,b) => a+b, 0) / refScores.length : null;
+
+  const sorted = [...members].sort((a,b) => {
+    const r = m => m.summary.signals.red>0?0:m.summary.signals.yellow>0?1:m.summary.posted_count>0?2:3;
+    return r(a) - r(b);
+  });
+  return wlHeroRange(posted, notPosted, totalWins, totalLosses, avgRef, '今月ゼロ')
+    + `<div class="sec"><div class="wl-grid">${sorted.map(m => renderWlMonthCard(m)).join('')}</div></div>`;
 }
 
 /* ════════════════════════════════════════
@@ -1979,7 +2243,7 @@ function bindEvt() {
   const di = document.getElementById('d-inp');
   if (di) di.onchange = e => { S.date = e.target.value; S.dash = null; fetchDash(); };
   const wi = document.getElementById('w-inp');
-  if (wi) wi.onchange = e => { S.date = e.target.value; S.dash = null; fetchDash().then(render); };
+  if (wi) wi.onchange = e => { S.date = e.target.value; S.dash = null; S.winsRange = {}; fetchDash().then(render); };
 }
 
 async function runCheck() {
