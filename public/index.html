@@ -563,6 +563,38 @@ select.inp { cursor: pointer; }
 .wl-month-entry { display: grid; grid-template-columns: 32px 1fr; gap: 6px; align-items: start; }
 .wl-month-date { font-size: 10px; font-weight: 700; color: var(--c-t4); padding-top: 2px; }
 .wl-month-wl { font-size: 11.5px; line-height: 1.5; }
+/* 月次ランキング */
+.wl-ranking {
+  background: linear-gradient(135deg, #fefce8 0%, #eff6ff 100%);
+  border: 1.5px solid #fcd34d; border-radius: var(--r); padding: 16px 20px;
+  margin-bottom: 20px;
+}
+.wl-ranking-ttl {
+  font-size: 13px; font-weight: 900; color: #92400e; letter-spacing: .02em;
+  margin-bottom: 12px; display: flex; align-items: center; gap: 6px;
+}
+.wl-rank-list { display: flex; flex-direction: column; gap: 7px; }
+.wl-rank-row {
+  display: grid; grid-template-columns: 28px 1fr auto; gap: 10px;
+  align-items: center; padding: 7px 12px;
+  background: rgba(255,255,255,.7); border-radius: 8px;
+  border: 1px solid rgba(253,211,77,.4);
+}
+.wl-rank-num {
+  font-size: 16px; font-weight: 900; text-align: center;
+}
+.wl-rank-num.r1 { color: #d97706; }
+.wl-rank-num.r2 { color: #6b7280; }
+.wl-rank-num.r3 { color: #92400e; }
+.wl-rank-num.r4, .wl-rank-num.r5 { color: #9ca3af; font-size: 13px; }
+.wl-rank-info { min-width: 0; }
+.wl-rank-name { font-size: 13px; font-weight: 700; color: var(--c-t1); }
+.wl-rank-sub  { font-size: 10.5px; color: var(--c-t3); margin-top: 1px; }
+.wl-rank-score {
+  font-size: 18px; font-weight: 900; color: #1d4ed8;
+  white-space: nowrap;
+}
+.wl-rank-score span { font-size: 10.5px; font-weight: 600; color: var(--c-t3); }
 
 /* ── バディくんチャット ── */
 .buddy-toggle-btn {
@@ -2020,6 +2052,37 @@ function renderWlMonthCard(m) {
   </div>`;
 }
 
+function wlWinsRanking(members) {
+  const MEDALS = ['🥇','🥈','🥉','4️⃣','5️⃣'];
+  const NUM_CLS = ['r1','r2','r3','r4','r5'];
+  const top5 = [...members]
+    .filter(m => m.summary.wins_count > 0)
+    .sort((a,b) => b.summary.wins_count - a.summary.wins_count)
+    .slice(0, 5);
+
+  if (!top5.length) return '';
+
+  const rows = top5.map((m, i) => {
+    const name = m.user.real_name || m.user.display_name || m.user.user_id;
+    const grp  = m.user.group ? (m.user.group.parent?.name ? `${m.user.group.parent.name} › ${m.user.group.name}` : m.user.group.name) : '';
+    const avgRef = m.summary.avg_reflection;
+    const sub  = [grp, avgRef != null ? `振返 ${avgRef.toFixed(2)}` : ''].filter(Boolean).join(' · ');
+    return `<div class="wl-rank-row">
+      <div class="wl-rank-num ${NUM_CLS[i]}">${MEDALS[i]}</div>
+      <div class="wl-rank-info">
+        <div class="wl-rank-name">${name}</div>
+        ${sub ? `<div class="wl-rank-sub">${sub}</div>` : ''}
+      </div>
+      <div class="wl-rank-score">${m.summary.wins_count}<span> 日</span></div>
+    </div>`;
+  }).join('');
+
+  return `<div class="wl-ranking">
+    <div class="wl-ranking-ttl">🏆 月間勝利ランキング TOP${top5.length}</div>
+    <div class="wl-rank-list">${rows}</div>
+  </div>`;
+}
+
 function wlBodyMonthly(data) {
   const { members } = data;
   const posted    = members.filter(m => m.summary.posted_count > 0);
@@ -2034,6 +2097,7 @@ function wlBodyMonthly(data) {
     return r(a) - r(b);
   });
   return wlHeroRange(posted, notPosted, totalWins, totalLosses, avgRef, '今月ゼロ')
+    + wlWinsRanking(members)
     + `<div class="sec"><div class="wl-grid">${sorted.map(m => renderWlMonthCard(m)).join('')}</div></div>`;
 }
 
