@@ -705,10 +705,10 @@ select.inp { cursor: pointer; }
       </div>
     </div>
     <nav class="sb-nav">
-      <div class="nv" data-view="wins" onclick="nav('wins')" id="nv-wins">
+      <div class="nv active" data-view="wins" onclick="nav('wins')" id="nv-wins">
         <span class="nv-ico">🏆</span><span>勝ち負けBoard</span>
       </div>
-      <div class="nv active" data-view="overview" onclick="nav('overview')">
+      <div class="nv" data-view="overview" onclick="nav('overview')" id="nv-overview">
         <span class="nv-ico">⊞</span><span>ダッシュボード</span>
         <span id="nb" class="nv-badge" style="display:none">0</span>
       </div>
@@ -784,7 +784,7 @@ select.inp { cursor: pointer; }
    State
 ════════════════════════════════════════ */
 const S = {
-  view:     'overview',
+  view:     'wins',
   sub:      'day',
   date:     today(),
   weekDate: today(),
@@ -796,7 +796,7 @@ const S = {
   dashUsers:   null,
   invitations: null,
   loading:   false,
-  role:      'viewer',
+  role:      'member',
   email:     '',
   displayName: '',
   winsPeriod: 'daily',
@@ -828,7 +828,14 @@ function isWkend(d) { const w = new Date(d + 'T00:00:00Z').getUTCDay(); return w
 /* ════════════════════════════════════════
    Navigation
 ════════════════════════════════════════ */
+const ROLE_ALLOWED = {
+  admin:     null,               // null = 全ページ許可
+  executive: ['wins','overview'],
+  member:    ['wins'],
+};
 function nav(view) {
+  const allowed = ROLE_ALLOWED[S.role];
+  if (allowed && !allowed.includes(view)) return;
   S.view = view;
   document.querySelectorAll('.nv').forEach(el => el.classList.toggle('active', el.dataset.view === view));
   render();
@@ -2283,15 +2290,20 @@ function renderUsersV() {
   const users = Array.isArray(S.dashUsers) ? S.dashUsers : [];
   const invs  = Array.isArray(S.invitations) ? S.invitations : [];
 
+  const ROLE_CHIP = { admin: `<span class="chip c-g">管理者</span>`, executive: `<span class="chip c-a">幹部</span>`, member: `<span class="chip c-p">メンバー</span>` };
+  const ROLE_NEXT = { admin: 'executive', executive: 'member', member: 'admin' };
+  const ROLE_NEXT_LBL = { admin: '幹部に変更', executive: 'メンバーに変更', member: '管理者に変更' };
   const userRows = users.map(u => {
     const isMe = u.email === S.email;
     const name = u.display_name || u.email;
-    const roleChip = u.role === 'admin'
-      ? `<span class="chip c-g">管理者</span>`
-      : `<span class="chip c-x">閲覧者</span>`;
-    const toggleRole = u.role === 'admin'
-      ? `<button class="btn btn-sec btn-sm" onclick="changeRole(${u.id},'viewer')" ${isMe?'disabled':''}>閲覧者に変更</button>`
-      : `<button class="btn btn-sec btn-sm" onclick="changeRole(${u.id},'admin')">管理者に変更</button>`;
+    const roleChip   = ROLE_CHIP[u.role] || `<span class="chip c-x">${u.role}</span>`;
+    const nextRole   = ROLE_NEXT[u.role] || 'member';
+    const nextLbl    = ROLE_NEXT_LBL[u.role] || '変更';
+    const roleSelect = `<select class="inp" style="width:88px;height:28px;font-size:12px" onchange="changeRole(${u.id},this.value)" ${isMe?'disabled':''}>
+      <option value="admin"     ${u.role==='admin'    ?'selected':''}>管理者</option>
+      <option value="executive" ${u.role==='executive'?'selected':''}>幹部</option>
+      <option value="member"    ${u.role==='member'   ?'selected':''}>メンバー</option>
+    </select>`;
     return `<div class="cr">
       <div style="flex:1;min-width:0">
         <div class="cr-lbl">${name} ${isMe?'<span class="chip c-p" style="font-size:10px;padding:2px 7px;margin-left:4px">あなた</span>':''}</div>
@@ -2299,7 +2311,7 @@ function renderUsersV() {
       </div>
       <div class="cr-ctrl">
         ${roleChip}
-        ${toggleRole}
+        ${roleSelect}
         <button class="btn btn-sec btn-sm" onclick="resetPw(${u.id},'${u.email}')">PW変更</button>
         <button class="btn btn-sec btn-sm t-r" onclick="delUser(${u.id},'${u.email}')" ${isMe?'disabled':''}>削除</button>
       </div>
@@ -2313,7 +2325,7 @@ function renderUsersV() {
       <div style="flex:1;min-width:0">
         <div class="cr-lbl">${iv.email}</div>
         <div class="cr-desc">
-          ${iv.role === 'admin' ? '管理者' : '閲覧者'} &nbsp;·&nbsp;
+          ${{admin:'管理者',executive:'幹部',member:'メンバー'}[iv.role] || iv.role} &nbsp;·&nbsp;
           ${expired ? '<span style="color:var(--c-red)">期限切れ</span>' : `有効期限: ${new Date(iv.expires_at).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}`}
           ${iv.invited_by ? ` &nbsp;·&nbsp; 招待者: ${iv.invited_by}` : ''}
         </div>
@@ -2341,7 +2353,8 @@ function renderUsersV() {
         <div class="cr-ctrl" style="gap:6px">
           <input class="inp" id="inv-email" placeholder="user@example.com" type="email" style="width:200px">
           <select class="inp" id="inv-role" style="width:96px">
-            <option value="viewer">閲覧者</option>
+            <option value="member">メンバー</option>
+            <option value="executive">幹部</option>
             <option value="admin">管理者</option>
           </select>
           <button class="btn btn-pri" onclick="sendInv()">招待送信</button>
@@ -2821,13 +2834,26 @@ function buddyRemoveTyping(id) {
 ════════════════════════════════════════ */
 api('GET', '/api/me').then(r => {
   if (!r.role) return;
-  S.role        = r.role || 'viewer';
+  S.role        = r.role;
   S.email       = r.email || '';
   S.displayName = r.displayName || '';
-  ['members','groups','settings','users'].forEach(v => {
+
+  // ロール別ナビ表示制御
+  // admin: 全表示
+  // executive: overview + wins のみ（members/groups/settings/users 非表示）
+  // member: wins のみ（overview も非表示）
+  const hideForExecutive = ['members','groups','settings','users'];
+  const hideForMember    = [...hideForExecutive, 'overview'];
+  const toHide = S.role === 'admin' ? [] : S.role === 'executive' ? hideForExecutive : hideForMember;
+  ['members','groups','settings','users','overview'].forEach(v => {
     const el = document.getElementById(`nv-${v}`);
-    if (el) el.style.display = S.role === 'admin' ? '' : 'none';
+    if (el) el.style.display = toHide.includes(v) ? 'none' : '';
   });
+
+  // 現在の view がロール的に閲覧不可なら wins にリダイレクト
+  const allowed = ROLE_ALLOWED[S.role];
+  if (allowed && !allowed.includes(S.view)) nav('wins');
+
   const label = S.displayName || S.email || '–';
   const userEl = document.getElementById('sb-user');
   if (userEl) userEl.textContent = label;

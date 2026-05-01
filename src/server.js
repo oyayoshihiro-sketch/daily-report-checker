@@ -806,7 +806,7 @@ ${memberLines.join('\n\n')}
     const { role, password } = req.body;
     if (role && role !== 'admin' && req.authUser?.id === id)
       return res.status(400).json({ ok: false, error: '自分自身の権限は変更できません' });
-    if (role === 'viewer') {
+    if (role && role !== 'admin') {
       const target = db.getDashboardUserById(id);
       if (target?.role === 'admin' && db.countAdminUsers() <= 1)
         return res.status(400).json({ ok: false, error: '管理者が1名のため権限を変更できません' });
@@ -836,7 +836,7 @@ ${memberLines.join('\n\n')}
   server.post('/api/invitations', requireAdmin, async (req, res) => {
     const { email, role } = req.body;
     if (!email) return res.status(400).json({ ok: false, error: 'メールアドレスが必要です' });
-    if (!['admin', 'viewer'].includes(role)) return res.status(400).json({ ok: false, error: 'role は admin または viewer です' });
+    if (!['admin', 'executive', 'member'].includes(role)) return res.status(400).json({ ok: false, error: 'role は admin / executive / member です' });
 
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
