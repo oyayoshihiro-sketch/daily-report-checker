@@ -1989,6 +1989,45 @@ function wlHeroRange(posted, notPosted, totalWins, totalLosses, avgRef, zeroLabe
   </div>`;
 }
 
+/* ─── 組織グループ化ヘルパー（週次/月次共通） ─── */
+function wlRootGroup(g) {
+  if (!g) return null;
+  while (g.parent) g = g.parent;
+  return g;
+}
+
+function wlGroupMembers(members) {
+  const groupMap = {};
+  const ungrouped = [];
+  for (const m of members) {
+    const root = wlRootGroup(m.user.group);
+    if (!root) { ungrouped.push(m); continue; }
+    if (!groupMap[root.id]) groupMap[root.id] = { id: root.id, name: root.name, members: [] };
+    groupMap[root.id].members.push(m);
+  }
+  return { groups: Object.values(groupMap), ungrouped };
+}
+
+function wlRangeDeptBlock(grp, cardFn) {
+  if (!grp.members.length) return '';
+  const sigSort = m => m.summary.signals.red>0?0:m.summary.signals.yellow>0?1:m.summary.posted_count>0?2:3;
+  const sorted  = [...grp.members].sort((a,b) => sigSort(a) - sigSort(b));
+  const pc = grp.members.filter(m => m.summary.posted_count > 0).length;
+  const wc = grp.members.reduce((s,m) => s + m.summary.wins_count,  0);
+  const lc = grp.members.reduce((s,m) => s + m.summary.losses_count, 0);
+  const refScores = grp.members.map(m => m.summary.avg_reflection).filter(s => s != null);
+  const avgRef    = refScores.length ? (refScores.reduce((a,b) => a+b,0)/refScores.length).toFixed(2) : null;
+  return `<div class="sec">
+    <div class="wl-dept-ttl">🏢 ${grp.name}
+      <span style="font-size:12px;font-weight:600;color:var(--c-t3)">${pc}/${grp.members.length}名投稿</span>
+      <span style="font-size:12px;color:#1d4ed8;font-weight:600">🏆${wc}</span>
+      <span style="font-size:12px;color:#7c3aed;font-weight:600">💪${lc}</span>
+      ${avgRef ? `<span style="font-size:12px;color:#c2410c;font-weight:600">📝${avgRef}</span>` : ''}
+    </div>
+    <div class="wl-grid">${sorted.map(m => cardFn(m)).join('')}</div>
+  </div>`;
+}
+
 function wlBodyWeekly(data) {
   const { members } = data;
   const posted    = members.filter(m => m.summary.posted_count > 0);
@@ -1998,12 +2037,14 @@ function wlBodyWeekly(data) {
   const refScores   = posted.map(m => m.summary.avg_reflection).filter(s => s != null);
   const avgRef      = refScores.length ? refScores.reduce((a,b) => a+b, 0) / refScores.length : null;
 
-  const sorted = [...members].sort((a,b) => {
-    const r = m => m.summary.signals.red>0?0:m.summary.signals.yellow>0?1:m.summary.posted_count>0?2:3;
-    return r(a) - r(b);
-  });
+  const { groups, ungrouped } = wlGroupMembers(members);
+  const depts = [
+    ...groups.map(g => wlRangeDeptBlock(g, renderWlWeekCard)),
+    ...(ungrouped.length ? [wlRangeDeptBlock({name:'未分類', members: ungrouped}, renderWlWeekCard)] : []),
+  ].filter(Boolean).join('');
+
   return wlHeroRange(posted, notPosted, totalWins, totalLosses, avgRef, '今週ゼロ')
-    + `<div class="sec"><div class="wl-grid">${sorted.map(m => renderWlWeekCard(m)).join('')}</div></div>`;
+    + (depts || `<div class="empty"><div class="empty-ico">📭</div><div class="empty-ttl">データなし</div></div>`);
 }
 
 /* ─── 月次 ─── */
@@ -2101,12 +2142,14 @@ function wlBodyMonthly(data) {
   const refScores   = posted.map(m => m.summary.avg_reflection).filter(s => s != null);
   const avgRef      = refScores.length ? refScores.reduce((a,b) => a+b, 0) / refScores.length : null;
 
-  const sorted = [...members].sort((a,b) => {
-    const r = m => m.summary.signals.red>0?0:m.summary.signals.yellow>0?1:m.summary.posted_count>0?2:3;
-    return r(a) - r(b);
-  });
+  const { groups, ungrouped } = wlGroupMembers(members);
+  const depts = [
+    ...groups.map(g => wlRangeDeptBlock(g, renderWlMonthCard)),
+    ...(ungrouped.length ? [wlRangeDeptBlock({name:'未分類', members: ungrouped}, renderWlMonthCard)] : []),
+  ].filter(Boolean).join('');
+
   return wlHeroRange(posted, notPosted, totalWins, totalLosses, avgRef, '今月ゼロ')
-    + `<div class="sec"><div class="wl-grid">${sorted.map(m => renderWlMonthCard(m)).join('')}</div></div>`;
+    + (depts || `<div class="empty"><div class="empty-ico">📭</div><div class="empty-ttl">データなし</div></div>`);
 }
 
 /* ════════════════════════════════════════
