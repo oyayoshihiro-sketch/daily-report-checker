@@ -266,8 +266,8 @@ select.inp { cursor: pointer; }
 
 /* ── Member rows ── */
 .mr {
-  display: grid; grid-template-columns: 20px 1fr 100px 96px 78px 68px;
-  align-items: center; gap: 10px; padding: 11px 18px;
+  display: grid; grid-template-columns: 20px 1fr 100px 88px 180px 78px 68px;
+  align-items: start; gap: 10px; padding: 11px 18px;
   border-bottom: 1px solid #f3faf5; transition: background .1s;
 }
 .mr:last-child { border-bottom: none; }
@@ -295,7 +295,7 @@ select.inp { cursor: pointer; }
 .missing-card-name { font-weight:700;font-size:13px;color:var(--c-t1); }
 .missing-card-grp  { font-size:11px;color:var(--c-t3);margin-top:2px; }
 .th-row {
-  display: grid; grid-template-columns: 20px 1fr 100px 96px 78px 68px;
+  display: grid; grid-template-columns: 20px 1fr 100px 88px 180px 78px 68px;
   align-items: center; gap: 10px; padding: 8px 18px;
   background: #f0fdf4; border-bottom: 1.5px solid var(--c-bdr2);
 }
@@ -1120,10 +1120,13 @@ function renderDeptBlock(dept, cfg) {
 
 function renderTblHd() {
   return `<div class="th-row">
-    <div></div><div class="th">名前 / コンディション</div>
+    <div></div>
+    <div class="th">名前 / コンディション</div>
     <div class="th">☀️朝 / 🌙夜</div>
     <div class="th">感情 / 振返</div>
-    <div class="th th-r">信号</div><div class="th th-r">監視</div>
+    <div class="th">🏆勝ち &nbsp;/&nbsp; 💪負け</div>
+    <div class="th th-r">信号</div>
+    <div class="th th-r">監視</div>
   </div>`;
 }
 
@@ -1173,7 +1176,7 @@ function renderMR(m, cfg) {
     return `<div class="mr rm">
       <div class="dot d-n"></div>
       <div><div class="mr-name" style="color:var(--c-red)">${name}</div><div class="mr-summary">未投稿</div></div>
-      <div>—</div><div>—</div>
+      <div>—</div><div>—</div><div>—</div>
       <div class="mr-flags"><span class="sig-pill sig-r">📭 未投稿</span></div>
       <div style="display:flex;justify-content:flex-end">${monBtn}</div>
     </div>`;
@@ -1237,34 +1240,41 @@ function renderMR(m, cfg) {
         <span style="font-size:10px;flex-shrink:0;margin-top:1px;color:#b45309;font-weight:800">🔍</span>
         <span style="font-size:11px;color:#92400e;line-height:1.5">${followPoints}</span>
        </div>` : '';
-  const winsHtml = winsText
-    ? `<div style="display:flex;gap:4px;align-items:flex-start;margin-top:3px">
-        <span style="font-size:10px;flex-shrink:0;margin-top:1px;color:#0369a1;font-weight:800">🏆</span>
-        <span style="font-size:11px;color:#0c4a6e;line-height:1.5">${winsText}</span>
-       </div>` : '';
-  const lossesHtml = lossesText
-    ? `<div style="display:flex;gap:4px;align-items:flex-start;margin-top:3px">
-        <span style="font-size:10px;flex-shrink:0;margin-top:1px;color:#7c3aed;font-weight:800">💪</span>
-        <span style="font-size:11px;color:#4c1d95;line-height:1.5">${lossesText}</span>
-       </div>` : '';
 
   const charCount = (evening_report || morning_report || report)?.char_count;
   const volumeFlag = check.volume_flag;
   const volBadge = volumeFlag
     ? `<span class="chip c-a" style="font-size:10px;padding:1px 5px">${(check.volume_ratio||0)<1?'📉':'📈'}</span>` : '';
 
+  // 勝ち/負け専用列
+  const wlHtml = (() => {
+    if (!winsText && !lossesText) return `<div style="color:var(--c-t4);font-size:11px;padding-top:2px">—</div>`;
+    const wPart = winsText
+      ? `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:4px 7px">
+           <div style="font-size:9px;font-weight:800;color:#1d4ed8;letter-spacing:.04em;margin-bottom:2px">🏆 WINS</div>
+           <div style="font-size:11px;color:#1e3a8a;line-height:1.45;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden">${winsText}</div>
+         </div>` : '';
+    const lPart = lossesText
+      ? `<div style="background:#faf5ff;border:1px solid #ddd6fe;border-radius:6px;padding:4px 7px;${winsText ? 'margin-top:4px' : ''}">
+           <div style="font-size:9px;font-weight:800;color:#7c3aed;letter-spacing:.04em;margin-bottom:2px">💪 LOSSES</div>
+           <div style="font-size:11px;color:#4c1d95;line-height:1.45;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden">${lossesText}</div>
+         </div>` : '';
+    return `<div style="display:flex;flex-direction:column">${wPart}${lPart}</div>`;
+  })();
+
   return `<div class="mr ${signalRow(sig)}">
-    <div class="dot ${signalDot(sig)}"></div>
+    <div class="dot ${signalDot(sig)}" style="margin-top:3px"></div>
     <div style="min-width:0">
       <div class="mr-name">${name}</div>
       ${summary ? `<div class="mr-summary">${summary}</div>` : ''}
-      ${winsHtml}${lossesHtml}${praiseHtml}${followHtml}
+      ${praiseHtml}${followHtml}
       <div class="mr-meta">${charCount ? charCount + '字' : ''}${volBadge ? ' ' + volBadge : ''}</div>
     </div>
-    <div>${timeHtml}</div>
-    <div>${scoreHtml}</div>
-    <div class="mr-flags">${sigBadge}</div>
-    <div style="display:flex;justify-content:flex-end">${monBtn}</div>
+    <div style="padding-top:2px">${timeHtml}</div>
+    <div style="padding-top:2px">${scoreHtml}</div>
+    <div>${wlHtml}</div>
+    <div class="mr-flags" style="padding-top:2px">${sigBadge}</div>
+    <div style="display:flex;justify-content:flex-end;padding-top:2px">${monBtn}</div>
   </div>`;
 }
 
