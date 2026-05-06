@@ -558,6 +558,25 @@ select.inp { cursor: pointer; }
 .wl-day-w { color: #1d4ed8; }
 .wl-day-l { color: #7c3aed; margin-top: 2px; }
 .wl-day-none { color: var(--c-t4); font-style: italic; }
+/* 投稿統計バー */
+.wl-post-stats {
+  display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px;
+}
+.wl-ps-card {
+  flex: 1; min-width: 90px;
+  background: #fff; border: 1.5px solid var(--c-bdr);
+  border-radius: var(--r2); padding: 10px 14px; text-align: center;
+  position: relative; overflow: hidden;
+}
+.wl-ps-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+}
+.wl-ps-card.morning::before { background: #f97316; }
+.wl-ps-card.evening::before { background: #6366f1; }
+.wl-ps-card.dual::before    { background: linear-gradient(90deg,#f97316,#6366f1); }
+.wl-ps-num { font-size: 26px; font-weight: 900; line-height: 1; color: var(--c-t1); }
+.wl-ps-lbl { font-size: 11px; font-weight: 700; color: var(--c-t3); margin-top: 4px; }
+.wl-ps-unit{ font-size: 11px; color: var(--c-t4); margin-top: 1px; }
 /* 月次リスト */
 .wl-month-list { display: flex; flex-direction: column; gap: 6px; }
 .wl-month-entry { display: grid; grid-template-columns: 32px 1fr; gap: 6px; align-items: start; }
@@ -1815,19 +1834,43 @@ function wlBar(period, range) {
       <div class="wl-period-tabs">${tabs}</div>
       ${nav}
       <button class="btn btn-sec" onclick="${period === 'daily' ? 'fetchDash().then(render)' : 'S.winsRange={};render()'}">↺ 更新</button>
+      ${S.role === 'admin' ? `<button class="btn btn-pri" id="wl-run-btn" onclick="wlRunCheck()" style="white-space:nowrap">▶ チェック実行</button>` : ''}
     </div>
   </div>`;
 }
 
 /* ─── 日次ヒーロー ─── */
+function wlPostStatsRow(morningN, eveningN, dualN, unit) {
+  return `<div class="wl-post-stats">
+    <div class="wl-ps-card morning">
+      <div class="wl-ps-num">${morningN}</div>
+      <div class="wl-ps-lbl">☀️ 朝投稿</div>
+      <div class="wl-ps-unit">${unit}</div>
+    </div>
+    <div class="wl-ps-card evening">
+      <div class="wl-ps-num">${eveningN}</div>
+      <div class="wl-ps-lbl">🌙 夜投稿</div>
+      <div class="wl-ps-unit">${unit}</div>
+    </div>
+    <div class="wl-ps-card dual">
+      <div class="wl-ps-num">${dualN}</div>
+      <div class="wl-ps-lbl">☀️🌙 2回投稿</div>
+      <div class="wl-ps-unit">${unit}</div>
+    </div>
+  </div>`;
+}
+
 function wlHeroDaily(dash) {
   const posted     = dash.members.filter(m => m.check?.posted);
   const withWins   = posted.filter(m => m.check?.wins_text);
   const withLosses = posted.filter(m => m.check?.losses_text);
-  const withBoth   = posted.filter(m => m.check?.wins_text && m.check?.losses_text);
   const notPosted  = dash.members.filter(m => !m.check?.posted);
   const refScores  = posted.map(m => m.check?.reflection_score).filter(s => s != null);
   const avgRef     = refScores.length ? refScores.reduce((a,b) => a+b, 0) / refScores.length : null;
+
+  const morningN = posted.filter(m => m.check?.morning_posted).length;
+  const eveningN = posted.filter(m => m.check?.evening_posted).length;
+  const dualN    = posted.filter(m => m.check?.morning_posted && m.check?.evening_posted).length;
 
   return `<div class="wl-hero">
     <div class="wl-hero-card wins">
@@ -1838,10 +1881,6 @@ function wlHeroDaily(dash) {
       <div class="wl-hero-num" style="color:#7c3aed">${withLosses.length}</div>
       <div class="wl-hero-lbl" style="color:#7c3aed">💪 負け</div>
     </div>
-    <div class="wl-hero-card dual">
-      <div class="wl-hero-num">${withBoth.length}</div>
-      <div class="wl-hero-lbl">☀️🌙 2回投稿</div>
-    </div>
     <div class="wl-hero-card refl">
       <div class="wl-hero-num" style="color:#c2410c">${avgRef != null ? avgRef.toFixed(2) : '—'}</div>
       <div class="wl-hero-lbl" style="color:#c2410c">📝 平均振返スコア</div>
@@ -1850,7 +1889,8 @@ function wlHeroDaily(dash) {
       <div class="wl-hero-num" style="color:var(--c-red)">${notPosted.length}</div>
       <div class="wl-hero-lbl" style="color:var(--c-red)">📭 未投稿</div>
     </div>` : ''}
-  </div>`;
+  </div>
+  ${wlPostStatsRow(morningN, eveningN, dualN, '人')}`;
 }
 
 /* ─── 日次メンバーカード ─── */
@@ -1975,7 +2015,20 @@ function renderWlWeekCard(m) {
   </div>`;
 }
 
-function wlHeroRange(posted, notPosted, totalWins, totalLosses, avgRef, zeroLabel) {
+function wlHeroRange(members, zeroLabel) {
+  const posted    = members.filter(m => m.summary.posted_count > 0);
+  const notPosted = members.filter(m => m.summary.posted_count === 0);
+  const totalWins   = posted.reduce((s,m) => s + m.summary.wins_count, 0);
+  const totalLosses = posted.reduce((s,m) => s + m.summary.losses_count, 0);
+  const refScores   = posted.map(m => m.summary.avg_reflection).filter(s => s != null);
+  const avgRef      = refScores.length ? refScores.reduce((a,b) => a+b, 0) / refScores.length : null;
+
+  // 朝/夜/2回投稿（延べ日数）
+  const allDays    = m => Object.values(m.days || {});
+  const morningN   = members.reduce((s,m) => s + allDays(m).filter(d => d.morning_posted).length, 0);
+  const eveningN   = members.reduce((s,m) => s + allDays(m).filter(d => d.evening_posted).length, 0);
+  const dualN      = members.reduce((s,m) => s + allDays(m).filter(d => d.morning_posted && d.evening_posted).length, 0);
+
   return `<div class="wl-hero">
     <div class="wl-hero-card wins">
       <div class="wl-hero-num" style="color:#1d4ed8">${totalWins}</div>
@@ -1993,7 +2046,8 @@ function wlHeroRange(posted, notPosted, totalWins, totalLosses, avgRef, zeroLabe
       <div class="wl-hero-num" style="color:var(--c-red)">${notPosted.length}</div>
       <div class="wl-hero-lbl" style="color:var(--c-red)">📭 ${zeroLabel}</div>
     </div>` : ''}
-  </div>`;
+  </div>
+  ${wlPostStatsRow(morningN, eveningN, dualN, '日（延べ）')}`;
 }
 
 /* ─── 組織グループ化ヘルパー（週次/月次共通） ─── */
@@ -2037,20 +2091,12 @@ function wlRangeDeptBlock(grp, cardFn) {
 
 function wlBodyWeekly(data) {
   const { members } = data;
-  const posted    = members.filter(m => m.summary.posted_count > 0);
-  const notPosted = members.filter(m => m.summary.posted_count === 0);
-  const totalWins   = posted.reduce((s,m) => s + m.summary.wins_count, 0);
-  const totalLosses = posted.reduce((s,m) => s + m.summary.losses_count, 0);
-  const refScores   = posted.map(m => m.summary.avg_reflection).filter(s => s != null);
-  const avgRef      = refScores.length ? refScores.reduce((a,b) => a+b, 0) / refScores.length : null;
-
   const { groups, ungrouped } = wlGroupMembers(members);
   const depts = [
     ...groups.map(g => wlRangeDeptBlock(g, renderWlWeekCard)),
     ...(ungrouped.length ? [wlRangeDeptBlock({name:'未分類', members: ungrouped}, renderWlWeekCard)] : []),
   ].filter(Boolean).join('');
-
-  return wlHeroRange(posted, notPosted, totalWins, totalLosses, avgRef, '今週ゼロ')
+  return wlHeroRange(members, '今週ゼロ')
     + (depts || `<div class="empty"><div class="empty-ico">📭</div><div class="empty-ttl">データなし</div></div>`);
 }
 
@@ -2142,20 +2188,12 @@ function wlWinsRanking(members) {
 
 function wlBodyMonthly(data) {
   const { members } = data;
-  const posted    = members.filter(m => m.summary.posted_count > 0);
-  const notPosted = members.filter(m => m.summary.posted_count === 0);
-  const totalWins   = posted.reduce((s,m) => s + m.summary.wins_count, 0);
-  const totalLosses = posted.reduce((s,m) => s + m.summary.losses_count, 0);
-  const refScores   = posted.map(m => m.summary.avg_reflection).filter(s => s != null);
-  const avgRef      = refScores.length ? refScores.reduce((a,b) => a+b, 0) / refScores.length : null;
-
   const { groups, ungrouped } = wlGroupMembers(members);
   const depts = [
     ...groups.map(g => wlRangeDeptBlock(g, renderWlMonthCard)),
     ...(ungrouped.length ? [wlRangeDeptBlock({name:'未分類', members: ungrouped}, renderWlMonthCard)] : []),
   ].filter(Boolean).join('');
-
-  return wlHeroRange(posted, notPosted, totalWins, totalLosses, avgRef, '今月ゼロ')
+  return wlHeroRange(members, '今月ゼロ')
     + (depts || `<div class="empty"><div class="empty-ico">📭</div><div class="empty-ttl">データなし</div></div>`);
 }
 
@@ -2388,6 +2426,21 @@ async function runCheck() {
     const r = await api('POST', '/api/check/run', { date: S.date });
     if (r.ok) { toast(`✅ チェック完了（${r.count}名）`, 'ok'); S.dash = null; await fetchDash(); }
     else toast(`❌ ${r.error}`, 'err');
+  } catch(e) { toast(`❌ ${e.message}`, 'err'); }
+  if (btn) { btn.disabled = false; btn.textContent = '▶ チェック実行'; }
+}
+
+async function wlRunCheck() {
+  const btn = document.getElementById('wl-run-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '実行中...'; }
+  try {
+    const r = await api('POST', '/api/check/run', { date: S.date });
+    if (r.ok) {
+      toast(`✅ チェック完了（${r.count}名）`, 'ok');
+      S.dash = null; S.winsRange = {};
+      await fetchDash();
+      render();
+    } else toast(`❌ ${r.error}`, 'err');
   } catch(e) { toast(`❌ ${e.message}`, 'err'); }
   if (btn) { btn.disabled = false; btn.textContent = '▶ チェック実行'; }
 }
