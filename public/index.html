@@ -454,54 +454,44 @@ select.inp { cursor: pointer; }
 .wl-hero-card.losses .wl-hero-lbl{ color: #7c3aed; }
 .wl-hero-card.dual  .wl-hero-lbl { color: var(--c-pri); }
 .wl-hero-card.refl  .wl-hero-lbl { color: #c2410c; }
-/* メンバーカード */
+/* メンバーリスト（コンパクト行） */
 .wl-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px;
-  margin-bottom: 24px;
+  display: flex; flex-direction: column;
+  border: 1.5px solid var(--c-bdr); border-radius: 10px; overflow: hidden;
+  margin-bottom: 14px; box-shadow: var(--sh0);
 }
 .wl-card {
-  background: #fff; border: 1.5px solid var(--c-bdr);
-  border-radius: var(--r); overflow: hidden; box-shadow: var(--sh0);
+  display: grid; grid-template-columns: 10px 1fr auto;
+  align-items: center; gap: 10px;
+  padding: 8px 14px; background: #fff;
+  border-bottom: 1px solid var(--c-bdr2);
+  transition: background .1s;
 }
-.wl-card.sig-red    { border-top: 3px solid var(--c-red); }
-.wl-card.sig-yellow { border-top: 3px solid var(--c-amb); }
-.wl-card.sig-green  { border-top: 3px solid var(--c-grn); }
-.wl-card.sig-none   { border-top: 3px solid var(--c-bdr); opacity: .55; }
-.wl-card-hd {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 14px; background: #fafffe; border-bottom: 1px solid var(--c-bdr2);
-}
-.wl-card-name { font-weight: 800; font-size: 13.5px; color: var(--c-t1); }
-.wl-card-meta { font-size: 11px; color: var(--c-t3); margin-top: 1px; }
-.wl-card-body { padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
-.wl-wins-box {
-  background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 8px 10px;
-}
-.wl-losses-box {
-  background: #faf5ff; border: 1px solid #ddd6fe; border-radius: 8px; padding: 8px 10px;
-}
-.wl-box-lbl {
-  font-size: 9.5px; font-weight: 900; letter-spacing: .06em; margin-bottom: 4px;
-}
-.wl-wins-box   .wl-box-lbl { color: #1d4ed8; }
-.wl-losses-box .wl-box-lbl { color: #7c3aed; }
-.wl-box-txt { font-size: 12px; line-height: 1.55; }
-.wl-wins-box   .wl-box-txt { color: #1e3a8a; }
-.wl-losses-box .wl-box-txt { color: #4c1d95; }
-.wl-no-data {
-  background: #f8fafc; border: 1.5px dashed var(--c-bdr); border-radius: 8px;
-  padding: 8px 10px; font-size: 12px; color: var(--c-t4); text-align: center;
-}
-.wl-refl-bar {
-  display: flex; align-items: center; gap: 6px; margin-top: 2px;
-}
-.wl-refl-track {
-  flex: 1; height: 5px; background: var(--c-bdr); border-radius: 3px; overflow: hidden;
-}
-.wl-refl-fill {
-  height: 100%; border-radius: 3px;
-  background: linear-gradient(90deg, #f59e0b, #22c55e);
-}
+.wl-card:last-child { border-bottom: none; }
+.wl-card:hover { background: #fafffe; }
+.wl-card.sig-red    { background: #fff5f5; }
+.wl-card.sig-yellow { background: #fffdf0; }
+.wl-card.sig-none   { opacity: .5; }
+.wl-sig-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.wl-card.sig-red    .wl-sig-dot { background: var(--c-red); }
+.wl-card.sig-yellow .wl-sig-dot { background: var(--c-amb); }
+.wl-card.sig-green  .wl-sig-dot { background: var(--c-grn); }
+.wl-card.sig-none   .wl-sig-dot { background: #cbd5e1; }
+.wl-card-name { font-weight: 700; font-size: 13px; color: var(--c-t1); }
+.wl-card-meta { font-size: 10.5px; color: var(--c-t3); margin-top: 1px; display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
+.wl-row-stats { display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+/* 週次 日付ドット */
+.wl-day-dots { display: inline-flex; gap: 2px; }
+.wl-dd { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+.wl-dd.red    { background: var(--c-red); }
+.wl-dd.yellow { background: var(--c-amb); }
+.wl-dd.green  { background: var(--c-grn); }
+.wl-dd.none   { background: #bfdbfe; }
+.wl-dd.np     { background: #f1f5f9; border: 1px solid #e2e8f0; }
+/* 振返バー（ヒーロー/カード共通） */
+.wl-refl-bar  { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.wl-refl-track{ flex: 1; height: 5px; background: var(--c-bdr); border-radius: 3px; overflow: hidden; }
+.wl-refl-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, #f59e0b, #22c55e); }
 .wl-dept-ttl {
   font-size: 13px; font-weight: 800; color: var(--c-t1);
   display: flex; align-items: center; gap: 8px;
@@ -1918,47 +1908,32 @@ function renderWlCard(m) {
   const name = user.real_name || user.display_name || user.user_id;
   const grp  = user.group ? (user.group.parent?.name ? `${user.group.parent.name} › ${user.group.name}` : user.group.name) : '';
   const sig  = check?.signal || null;
-  const ref  = check?.reflection_score;
-  const postIco = `${check?.morning_posted ? '☀️' : ''}${check?.evening_posted ? '🌙' : ''}` || '📭';
 
   if (!check?.posted) {
     return `<div class="wl-card sig-none">
-      <div class="wl-card-hd">
-        <div>
-          <div class="wl-card-name" style="color:var(--c-t3)">${name}</div>
-          ${grp ? `<div class="wl-card-meta">${grp}</div>` : ''}
-        </div>
-        <span class="sig-pill" style="background:#f1f5f9;color:var(--c-t4)">📭 未投稿</span>
+      <div class="wl-sig-dot"></div>
+      <div>
+        <div class="wl-card-name">${name}</div>
+        ${grp ? `<div class="wl-card-meta">${grp}</div>` : ''}
       </div>
+      <span style="font-size:11px;color:var(--c-t4)">📭 未投稿</span>
     </div>`;
   }
 
-  const sigCls   = sig === 'red' ? 'sig-red' : sig === 'yellow' ? 'sig-yellow' : sig === 'green' ? 'sig-green' : 'sig-none';
-  const sigBadge = sig === 'red'    ? `<span class="sig-pill sig-r">🔴</span>`
-    : sig === 'yellow' ? `<span class="sig-pill sig-y">🟡</span>`
-    : sig === 'green'  ? `<span class="sig-pill sig-g">🟢</span>` : '';
-  const refHtml = ref != null ? `<div class="wl-refl-bar">
-    <span style="font-size:10px;color:var(--c-t3);min-width:60px">📝 振返 ${ref.toFixed(2)}</span>
-    <div class="wl-refl-track"><div class="wl-refl-fill" style="width:${Math.round(ref*100)}%"></div></div>
-  </div>` : '';
-  const winsHtml = check.wins_text
-    ? `<div class="wl-wins-box"><div class="wl-box-lbl">🏆 WINS — 今日の勝ち</div><div class="wl-box-txt">${check.wins_text}</div></div>`
-    : `<div class="wl-no-data">🏆 勝ちの記録なし</div>`;
-  const lossesHtml = check.losses_text
-    ? `<div class="wl-losses-box"><div class="wl-box-lbl">💪 LOSSES — 今日の負け</div><div class="wl-box-txt">${check.losses_text}</div></div>`
-    : `<div class="wl-no-data">💪 負けの記録なし</div>`;
-  const summaryHtml = check.sentiment_summary
-    ? `<div style="font-size:11.5px;color:var(--c-t3);font-style:italic;border-top:1px solid var(--c-bdr2);padding-top:6px">${check.sentiment_summary}</div>` : '';
+  const sigCls  = sig === 'red' ? 'sig-red' : sig === 'yellow' ? 'sig-yellow' : sig === 'green' ? 'sig-green' : 'sig-none';
+  const postIco = `${check.morning_posted ? '☀️' : ''}${check.evening_posted ? '🌙' : ''}`;
+  const ref     = check.reflection_score;
+  const wIco    = check.wins_text   ? `<span style="color:#1d4ed8;font-weight:800">🏆✓</span>` : `<span style="color:#cbd5e1">🏆—</span>`;
+  const lIco    = check.losses_text ? `<span style="color:#7c3aed;font-weight:800">💪✓</span>` : `<span style="color:#cbd5e1">💪—</span>`;
+  const refStr  = ref != null ? `<span style="color:#c2410c">📝${ref.toFixed(2)}</span>` : '';
 
   return `<div class="wl-card ${sigCls}">
-    <div class="wl-card-hd">
-      <div>
-        <div class="wl-card-name">${name}</div>
-        <div class="wl-card-meta">${grp ? grp + ' &nbsp;·&nbsp; ' : ''}${postIco}</div>
-      </div>
-      <div style="display:flex;align-items:center;gap:6px">${sigBadge}</div>
+    <div class="wl-sig-dot"></div>
+    <div>
+      <div class="wl-card-name">${name}</div>
+      <div class="wl-card-meta">${grp ? grp + ' ·' : ''} <span>${postIco}</span></div>
     </div>
-    <div class="wl-card-body">${winsHtml}${lossesHtml}${refHtml}${summaryHtml}</div>
+    <div class="wl-row-stats">${wIco}${lIco}${refStr}</div>
   </div>`;
 }
 
@@ -2035,34 +2010,27 @@ function renderWlWeekCard(m) {
   const { summary, days } = m;
   const topSig = summary.signals.red > 0 ? 'sig-red' : summary.signals.yellow > 0 ? 'sig-yellow' : summary.posted_count > 0 ? 'sig-green' : 'sig-none';
 
-  const dayRows = Object.entries(days).map(([date, d]) => {
-    const dow  = WL_DAY_JA[new Date(date + 'T12:00:00Z').getDay()];
-    const mmdd = date.slice(5).replace('-','/');
-    const dotCls = d.posted && d.signal ? d.signal : '';
-    const wTxt = d.wins_text   ? `<div class="wl-day-w">🏆 ${d.wins_text}</div>` : '';
-    const lTxt = d.losses_text ? `<div class="wl-day-l">💪 ${d.losses_text}</div>` : '';
-    const none = !d.posted ? `<div class="wl-day-none">未投稿</div>` : (!wTxt && !lTxt ? `<div class="wl-day-none">記録なし</div>` : '');
-    return `<div class="wl-week-day">
-      <div class="wl-day-lbl">${dow} ${mmdd}</div>
-      <div class="wl-day-dot ${dotCls}"></div>
-      <div class="wl-day-content">${wTxt}${lTxt}${none}</div>
-    </div>`;
+  const dots = Object.entries(days).map(([date, d]) => {
+    const dow = WL_DAY_JA[new Date(date + 'T12:00:00Z').getDay()];
+    const cls = !d.posted ? 'np' : (d.signal || 'none');
+    const lbl = `${dow} ${date.slice(5)}: ${!d.posted ? '未投稿' : d.wins_text ? '🏆' + d.wins_text : '投稿済'}`;
+    return `<div class="wl-dd ${cls}" title="${lbl}"></div>`;
   }).join('');
 
   const avgRef = summary.avg_reflection;
-  const refBar = avgRef != null ? `<div class="wl-refl-bar" style="padding:0 14px 10px">
-    <span style="font-size:10px;color:var(--c-t3);min-width:60px">📝 振返 ${avgRef.toFixed(2)}</span>
-    <div class="wl-refl-track"><div class="wl-refl-fill" style="width:${Math.round(avgRef*100)}%"></div></div>
-  </div>` : '';
+  const refStr = avgRef != null ? `<span style="color:#c2410c">📝${avgRef.toFixed(2)}</span>` : '';
 
   return `<div class="wl-card ${topSig}">
-    <div class="wl-card-hd">
-      <div>
-        <div class="wl-card-name">${name}</div>
-        <div class="wl-card-meta">${grp ? grp + ' &nbsp;·&nbsp; ' : ''}${summary.posted_count}/${summary.total_days}日投稿 &nbsp;🏆${summary.wins_count} 💪${summary.losses_count}</div>
-      </div>
+    <div class="wl-sig-dot"></div>
+    <div>
+      <div class="wl-card-name">${name}</div>
+      <div class="wl-card-meta">${grp ? grp + ' ·' : ''} ${summary.posted_count}/${summary.total_days}日 <span class="wl-day-dots">${dots}</span></div>
     </div>
-    ${dayRows}${refBar}
+    <div class="wl-row-stats">
+      <span style="color:#1d4ed8">🏆${summary.wins_count}</span>
+      <span style="color:#7c3aed">💪${summary.losses_count}</span>
+      ${refStr}
+    </div>
   </div>`;
 }
 
@@ -2276,53 +2244,21 @@ function wlBodyWeekly(data) {
 function renderWlMonthCard(m) {
   const name = m.user.real_name || m.user.display_name || m.user.user_id;
   const grp  = m.user.group ? (m.user.group.parent?.name ? `${m.user.group.parent.name} › ${m.user.group.name}` : m.user.group.name) : '';
-  const { summary, days } = m;
+  const { summary } = m;
   const topSig = summary.signals.red > 0 ? 'sig-red' : summary.signals.yellow > 0 ? 'sig-yellow' : summary.posted_count > 0 ? 'sig-green' : 'sig-none';
   const avgRef = summary.avg_reflection;
-
-  const winEntries  = Object.entries(days).filter(([,d]) => d.wins_text);
-  const lossEntries = Object.entries(days).filter(([,d]) => d.losses_text);
-
-  const wList = winEntries.length
-    ? winEntries.map(([date,d]) => {
-        const mmdd = date.slice(5).replace('-','/');
-        return `<div class="wl-month-entry"><div class="wl-month-date">${mmdd}</div><div class="wl-month-wl" style="color:#1d4ed8">${d.wins_text}</div></div>`;
-      }).join('')
-    : `<div style="font-size:11.5px;color:var(--c-t4);font-style:italic;padding:4px 0">記録なし</div>`;
-
-  const lList = lossEntries.length
-    ? lossEntries.map(([date,d]) => {
-        const mmdd = date.slice(5).replace('-','/');
-        return `<div class="wl-month-entry"><div class="wl-month-date">${mmdd}</div><div class="wl-month-wl" style="color:#7c3aed">${d.losses_text}</div></div>`;
-      }).join('')
-    : `<div style="font-size:11.5px;color:var(--c-t4);font-style:italic;padding:4px 0">記録なし</div>`;
-
-  const refBar = avgRef != null ? `<div class="wl-refl-bar" style="padding-bottom:4px">
-    <span style="font-size:10px;color:var(--c-t3);min-width:60px">📝 振返 ${avgRef.toFixed(2)}</span>
-    <div class="wl-refl-track"><div class="wl-refl-fill" style="width:${Math.round(avgRef*100)}%"></div></div>
-  </div>` : '';
+  const refStr = avgRef != null ? `<span style="color:#c2410c">📝${avgRef.toFixed(2)}</span>` : '';
 
   return `<div class="wl-card ${topSig}">
-    <div class="wl-card-hd">
-      <div>
-        <div class="wl-card-name">${name}</div>
-        <div class="wl-card-meta">${grp ? grp + ' &nbsp;·&nbsp; ' : ''}${summary.posted_count}/${summary.total_days}日投稿</div>
-      </div>
-      <div style="text-align:right;font-size:11.5px;font-weight:700;line-height:1.6">
-        <div style="color:#1d4ed8">🏆 ${summary.wins_count}日</div>
-        <div style="color:#7c3aed">💪 ${summary.losses_count}日</div>
-      </div>
+    <div class="wl-sig-dot"></div>
+    <div>
+      <div class="wl-card-name">${name}</div>
+      <div class="wl-card-meta">${grp ? grp + ' ·' : ''} 投稿${summary.posted_count}/${summary.total_days}日</div>
     </div>
-    <div class="wl-card-body">
-      ${refBar}
-      <div>
-        <div style="font-size:9.5px;font-weight:900;letter-spacing:.06em;color:#1d4ed8;margin-bottom:6px">🏆 WINS</div>
-        <div class="wl-month-list">${wList}</div>
-      </div>
-      <div style="border-top:1px solid var(--c-bdr2);padding-top:8px">
-        <div style="font-size:9.5px;font-weight:900;letter-spacing:.06em;color:#7c3aed;margin-bottom:6px">💪 LOSSES</div>
-        <div class="wl-month-list">${lList}</div>
-      </div>
+    <div class="wl-row-stats">
+      <span style="color:#1d4ed8">🏆${summary.wins_count}日</span>
+      <span style="color:#7c3aed">💪${summary.losses_count}日</span>
+      ${refStr}
     </div>
   </div>`;
 }
