@@ -508,6 +508,14 @@ select.inp { cursor: pointer; }
   padding-bottom: 10px; margin-bottom: 12px;
   border-bottom: 2px solid var(--c-bdr2);
 }
+.wl-sub-dept { margin-bottom: 16px; }
+.wl-sub-dept-ttl {
+  font-size: 12px; font-weight: 700; color: var(--c-t2);
+  display: flex; align-items: center; gap: 7px;
+  padding: 5px 10px; margin-bottom: 8px;
+  background: var(--c-bg2); border-radius: 6px;
+  border-left: 3px solid var(--c-bdr2);
+}
 .wl-no-post {
   background: #fff5f5; border: 1.5px solid var(--c-redBr); border-radius: 8px;
   padding: 6px 12px; font-size: 11.5px; color: var(--c-red); font-weight: 600;
@@ -1949,20 +1957,51 @@ function wlDeptBlock(dept, direct, cardFn) {
     ...(direct||[])
   ];
   if (!all.length) return '';
-  const sorted = [...all].sort((a,b) => {
-    const r = m => m.check?.signal==='red'?0:m.check?.signal==='yellow'?1:m.check?.signal==='green'?2:3;
-    return r(a) - r(b);
-  });
+  const sigSort = m => m.check?.signal==='red'?0:m.check?.signal==='yellow'?1:m.check?.signal==='green'?2:3;
   const pc = all.filter(m => m.check?.posted).length;
   const wc = all.filter(m => m.check?.wins_text).length;
   const lc = all.filter(m => m.check?.losses_text).length;
+
+  let body = '';
+  for (const child of (dept.children||[])) {
+    const childAll = [...(child.members||[]), ...(child.children||[]).flatMap(gc => gc.members||[])];
+    if (!childAll.length) continue;
+    const sgPc = childAll.filter(m => m.check?.posted).length;
+    const sgWc = childAll.filter(m => m.check?.wins_text).length;
+    const sgLc = childAll.filter(m => m.check?.losses_text).length;
+    body += `<div class="wl-sub-dept">
+      <div class="wl-sub-dept-ttl">▸ ${child.name}
+        <span style="font-size:11px;color:var(--c-t3)">${sgPc}/${childAll.length}名</span>
+        <span style="font-size:11px;color:#1d4ed8">🏆${sgWc}</span>
+        <span style="font-size:11px;color:#7c3aed">💪${sgLc}</span>
+      </div>`;
+    if ((child.members||[]).length) {
+      const sorted = [...child.members].sort((a,b) => sigSort(a) - sigSort(b));
+      body += `<div class="wl-grid">${sorted.map(m => cardFn(m)).join('')}</div>`;
+    }
+    for (const gc of (child.children||[])) {
+      if (!gc.members?.length) continue;
+      const gcSorted = [...gc.members].sort((a,b) => sigSort(a) - sigSort(b));
+      const gcPc = gc.members.filter(m => m.check?.posted).length;
+      body += `<div class="wl-sub-dept-ttl" style="margin-left:16px">└ ${gc.name}
+        <span style="font-size:11px;color:var(--c-t3)">${gcPc}/${gc.members.length}名</span>
+      </div>`;
+      body += `<div class="wl-grid" style="margin-left:16px">${gcSorted.map(m => cardFn(m)).join('')}</div>`;
+    }
+    body += `</div>`;
+  }
+  if ((direct||[]).length) {
+    const sorted = [...direct].sort((a,b) => sigSort(a) - sigSort(b));
+    body += `<div class="wl-grid">${sorted.map(m => cardFn(m)).join('')}</div>`;
+  }
+
   return `<div class="sec">
     <div class="wl-dept-ttl">🏢 ${dept.name}
       <span style="font-size:12px;font-weight:600;color:var(--c-t3)">${pc}/${all.length}名投稿</span>
       <span style="font-size:12px;color:#1d4ed8;font-weight:600">🏆${wc}</span>
       <span style="font-size:12px;color:#7c3aed;font-weight:600">💪${lc}</span>
     </div>
-    <div class="wl-grid">${sorted.map(m => cardFn(m)).join('')}</div>
+    ${body}
   </div>`;
 }
 
@@ -2057,35 +2096,74 @@ function wlRootGroup(g) {
   return g;
 }
 
+// rootの直下の子グループ（第2階層）を返す
+function wlSecondLevel(g, root) {
+  if (!g || g.id === root.id) return null;
+  if (g.parent && g.parent.id === root.id) return g;
+  if (g.parent) return wlSecondLevel(g.parent, root);
+  return null;
+}
+
 function wlGroupMembers(members) {
-  const groupMap = {};
+  const rootMap = {};
   const ungrouped = [];
   for (const m of members) {
     const root = wlRootGroup(m.user.group);
     if (!root) { ungrouped.push(m); continue; }
-    if (!groupMap[root.id]) groupMap[root.id] = { id: root.id, name: root.name, members: [] };
-    groupMap[root.id].members.push(m);
+    if (!rootMap[root.id]) rootMap[root.id] = { id: root.id, name: root.name, subGroups: {}, direct: [] };
+    const sub = wlSecondLevel(m.user.group, root);
+    if (!sub) {
+      rootMap[root.id].direct.push(m);
+    } else {
+      if (!rootMap[root.id].subGroups[sub.id]) rootMap[root.id].subGroups[sub.id] = { id: sub.id, name: sub.name, members: [] };
+      rootMap[root.id].subGroups[sub.id].members.push(m);
+    }
   }
-  return { groups: Object.values(groupMap), ungrouped };
+  return { groups: Object.values(rootMap), ungrouped };
 }
 
 function wlRangeDeptBlock(grp, cardFn) {
-  if (!grp.members.length) return '';
+  const subGroups     = Object.values(grp.subGroups || {});
+  const directMembers = grp.direct || grp.members || [];
+  const allMembers    = [...subGroups.flatMap(sg => sg.members), ...directMembers];
+  if (!allMembers.length) return '';
+
   const sigSort = m => m.summary.signals.red>0?0:m.summary.signals.yellow>0?1:m.summary.posted_count>0?2:3;
-  const sorted  = [...grp.members].sort((a,b) => sigSort(a) - sigSort(b));
-  const pc = grp.members.filter(m => m.summary.posted_count > 0).length;
-  const wc = grp.members.reduce((s,m) => s + m.summary.wins_count,  0);
-  const lc = grp.members.reduce((s,m) => s + m.summary.losses_count, 0);
-  const refScores = grp.members.map(m => m.summary.avg_reflection).filter(s => s != null);
+  const pc = allMembers.filter(m => m.summary.posted_count > 0).length;
+  const wc = allMembers.reduce((s,m) => s + m.summary.wins_count,  0);
+  const lc = allMembers.reduce((s,m) => s + m.summary.losses_count, 0);
+  const refScores = allMembers.map(m => m.summary.avg_reflection).filter(s => s != null);
   const avgRef    = refScores.length ? (refScores.reduce((a,b) => a+b,0)/refScores.length).toFixed(2) : null;
+
+  let body = '';
+  for (const sg of subGroups) {
+    if (!sg.members.length) continue;
+    const sorted = [...sg.members].sort((a,b) => sigSort(a) - sigSort(b));
+    const sgPc = sg.members.filter(m => m.summary.posted_count > 0).length;
+    const sgWc = sg.members.reduce((s,m) => s + m.summary.wins_count, 0);
+    const sgLc = sg.members.reduce((s,m) => s + m.summary.losses_count, 0);
+    body += `<div class="wl-sub-dept">
+      <div class="wl-sub-dept-ttl">▸ ${sg.name}
+        <span style="font-size:11px;color:var(--c-t3)">${sgPc}/${sg.members.length}名</span>
+        <span style="font-size:11px;color:#1d4ed8">🏆${sgWc}</span>
+        <span style="font-size:11px;color:#7c3aed">💪${sgLc}</span>
+      </div>
+      <div class="wl-grid">${sorted.map(m => cardFn(m)).join('')}</div>
+    </div>`;
+  }
+  if (directMembers.length) {
+    const sorted = [...directMembers].sort((a,b) => sigSort(a) - sigSort(b));
+    body += `<div class="wl-grid">${sorted.map(m => cardFn(m)).join('')}</div>`;
+  }
+
   return `<div class="sec">
     <div class="wl-dept-ttl">🏢 ${grp.name}
-      <span style="font-size:12px;font-weight:600;color:var(--c-t3)">${pc}/${grp.members.length}名投稿</span>
+      <span style="font-size:12px;font-weight:600;color:var(--c-t3)">${pc}/${allMembers.length}名投稿</span>
       <span style="font-size:12px;color:#1d4ed8;font-weight:600">🏆${wc}</span>
       <span style="font-size:12px;color:#7c3aed;font-weight:600">💪${lc}</span>
       ${avgRef ? `<span style="font-size:12px;color:#c2410c;font-weight:600">📝${avgRef}</span>` : ''}
     </div>
-    <div class="wl-grid">${sorted.map(m => cardFn(m)).join('')}</div>
+    ${body}
   </div>`;
 }
 
