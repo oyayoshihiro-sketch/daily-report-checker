@@ -516,6 +516,17 @@ select.inp { cursor: pointer; }
   background: var(--c-bg2); border-radius: 6px;
   border-left: 3px solid var(--c-bdr2);
 }
+/* 組織別投稿率グリッド */
+.wl-org-rate-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:10px; margin-bottom:20px; }
+.wl-org-rate-card { background:var(--c-sur); border:1.5px solid var(--c-bdr); border-radius:10px; padding:11px 13px; box-shadow:var(--sh0); }
+.wl-org-rate-card.child { border-style:dashed; background:#fafff9; }
+.wl-org-rate-name { font-size:11.5px; font-weight:700; color:var(--c-t1); margin-bottom:8px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.wl-org-rate-row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:4px; text-align:center; }
+.wl-org-rate-cell { display:flex; flex-direction:column; gap:2px; }
+.wl-org-rate-lbl { font-size:9px; font-weight:700; }
+.wl-org-rate-pct { font-size:13px; font-weight:800; }
+.wl-org-rate-bar { height:3px; border-radius:2px; margin-top:2px; background:var(--c-bdr2); }
+.wl-org-rate-fill { height:100%; border-radius:2px; }
 .wl-no-post {
   background: #fff5f5; border: 1.5px solid var(--c-redBr); border-radius: 8px;
   padding: 6px 12px; font-size: 11.5px; color: var(--c-red); font-weight: 600;
@@ -2007,11 +2018,12 @@ function wlDeptBlock(dept, direct, cardFn) {
 
 function wlBodyDaily(dash) {
   const { group_tree, ungrouped } = dash;
+  const rateGrid = wlOrgRateGridDaily(dash);
   const depts = [
     ...group_tree.map(g => wlDeptBlock(g, g.direct_members, renderWlCard)),
     ...(ungrouped?.length ? [wlDeptBlock({name:'未分類',children:[]}, ungrouped, renderWlCard)] : []),
   ].filter(Boolean).join('');
-  return depts || `<div class="empty"><div class="empty-ico">📭</div><div class="empty-ttl">データなし</div><p>「チェック実行」を押してください。</p></div>`;
+  return rateGrid + (depts || `<div class="empty"><div class="empty-ico">📭</div><div class="empty-ttl">データなし</div><p>「チェック実行」を押してください。</p></div>`);
 }
 
 /* ─── 週次 ─── */
@@ -2087,6 +2099,87 @@ function wlHeroRange(members, zeroLabel) {
     </div>` : ''}
   </div>
   ${wlPostStatsRow(morningN, eveningN, dualN, '日（延べ）')}`;
+}
+
+/* ─── 組織別投稿率カード ─── */
+function calcWlDailyOrgRates(members) {
+  const total = members.length;
+  if (!total) return null;
+  const mn = members.filter(m => m.check?.morning_posted).length;
+  const en = members.filter(m => m.check?.evening_posted).length;
+  const dn = members.filter(m => m.check?.morning_posted && m.check?.evening_posted).length;
+  return { morningPct: Math.round(mn/total*100), eveningPct: Math.round(en/total*100), dualPct: Math.round(dn/total*100) };
+}
+
+function calcWlRangeOrgRates(members) {
+  if (!members.length) return null;
+  let mSum = 0, eSum = 0, dSum = 0, daySum = 0;
+  for (const m of members) {
+    const vals = Object.values(m.days || {});
+    daySum += vals.length;
+    mSum += vals.filter(d => d.morning_posted).length;
+    eSum += vals.filter(d => d.evening_posted).length;
+    dSum += vals.filter(d => d.morning_posted && d.evening_posted).length;
+  }
+  if (!daySum) return { morningPct: 0, eveningPct: 0, dualPct: 0 };
+  return { morningPct: Math.round(mSum/daySum*100), eveningPct: Math.round(eSum/daySum*100), dualPct: Math.round(dSum/daySum*100) };
+}
+
+function wlOrgRateCard(name, rates, isChild) {
+  if (!rates) return '';
+  const cell = (lbl, pct, color) => {
+    const cl = pct >= 80 ? 'var(--c-pri)' : pct >= 50 ? '#f59e0b' : 'var(--c-red)';
+    const tc = pct >= 80 ? 'var(--c-pri)' : pct >= 50 ? '#92400e' : 'var(--c-red)';
+    return `<div class="wl-org-rate-cell">
+      <div class="wl-org-rate-lbl" style="color:${color}">${lbl}</div>
+      <div class="wl-org-rate-pct" style="color:${tc}">${pct}%</div>
+      <div class="wl-org-rate-bar"><div class="wl-org-rate-fill" style="width:${pct}%;background:${cl}"></div></div>
+    </div>`;
+  };
+  return `<div class="wl-org-rate-card${isChild?' child':''}">
+    <div class="wl-org-rate-name">${name}</div>
+    <div class="wl-org-rate-row">
+      ${cell('☀️ 朝', rates.morningPct, '#f97316')}
+      ${cell('🌙 夜', rates.eveningPct, '#6366f1')}
+      ${cell('☀️🌙 2回', rates.dualPct, 'var(--c-t3)')}
+    </div>
+  </div>`;
+}
+
+function wlOrgRateGridDaily(dash) {
+  const { group_tree, ungrouped } = dash;
+  const cards = [];
+  for (const top of (group_tree||[])) {
+    const topMs = [
+      ...(top.children||[]).flatMap(c => [...(c.members||[]), ...(c.children||[]).flatMap(gc => gc.members||[])]),
+      ...(top.direct_members||[])
+    ];
+    if (!topMs.length) continue;
+    cards.push(wlOrgRateCard('🏢 ' + top.name, calcWlDailyOrgRates(topMs), false));
+    for (const child of (top.children||[])) {
+      const childMs = [...(child.members||[]), ...(child.children||[]).flatMap(gc => gc.members||[])];
+      if (!childMs.length) continue;
+      cards.push(wlOrgRateCard('▸ ' + child.name, calcWlDailyOrgRates(childMs), true));
+    }
+  }
+  if (ungrouped?.length) cards.push(wlOrgRateCard('未分類', calcWlDailyOrgRates(ungrouped), true));
+  return cards.length ? `<div class="wl-org-rate-grid">${cards.join('')}</div>` : '';
+}
+
+function wlOrgRateGridRange(groups, ungrouped) {
+  const cards = [];
+  for (const grp of groups) {
+    const subGs = Object.values(grp.subGroups || {});
+    const allMs = [...subGs.flatMap(sg => sg.members), ...(grp.direct||[])];
+    if (!allMs.length) continue;
+    cards.push(wlOrgRateCard('🏢 ' + grp.name, calcWlRangeOrgRates(allMs), false));
+    for (const sg of subGs) {
+      if (!sg.members.length) continue;
+      cards.push(wlOrgRateCard('▸ ' + sg.name, calcWlRangeOrgRates(sg.members), true));
+    }
+  }
+  if (ungrouped?.length) cards.push(wlOrgRateCard('未分類', calcWlRangeOrgRates(ungrouped), true));
+  return cards.length ? `<div class="wl-org-rate-grid">${cards.join('')}</div>` : '';
 }
 
 /* ─── 組織グループ化ヘルパー（週次/月次共通） ─── */
@@ -2170,11 +2263,12 @@ function wlRangeDeptBlock(grp, cardFn) {
 function wlBodyWeekly(data) {
   const { members } = data;
   const { groups, ungrouped } = wlGroupMembers(members);
+  const rateGrid = wlOrgRateGridRange(groups, ungrouped);
   const depts = [
     ...groups.map(g => wlRangeDeptBlock(g, renderWlWeekCard)),
     ...(ungrouped.length ? [wlRangeDeptBlock({name:'未分類', members: ungrouped}, renderWlWeekCard)] : []),
   ].filter(Boolean).join('');
-  return wlHeroRange(members, '今週ゼロ')
+  return wlHeroRange(members, '今週ゼロ') + rateGrid
     + (depts || `<div class="empty"><div class="empty-ico">📭</div><div class="empty-ttl">データなし</div></div>`);
 }
 
@@ -2267,11 +2361,12 @@ function wlWinsRanking(members) {
 function wlBodyMonthly(data) {
   const { members } = data;
   const { groups, ungrouped } = wlGroupMembers(members);
+  const rateGrid = wlOrgRateGridRange(groups, ungrouped);
   const depts = [
     ...groups.map(g => wlRangeDeptBlock(g, renderWlMonthCard)),
     ...(ungrouped.length ? [wlRangeDeptBlock({name:'未分類', members: ungrouped}, renderWlMonthCard)] : []),
   ].filter(Boolean).join('');
-  return wlHeroRange(members, '今月ゼロ')
+  return wlHeroRange(members, '今月ゼロ') + rateGrid
     + (depts || `<div class="empty"><div class="empty-ico">📭</div><div class="empty-ttl">データなし</div></div>`);
 }
 
