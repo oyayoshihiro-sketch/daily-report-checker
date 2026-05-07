@@ -378,6 +378,7 @@ function createServer() {
             wins_text:        c.wins_text        || null,
             losses_text:      c.losses_text       || null,
             reflection_score: c.reflection_score != null ? c.reflection_score : null,
+            growth_note:      c.growth_note       || null,
             signal:           calcSig(c),
             morning_posted:   c.morning_posted    || 0,
             evening_posted:   c.evening_posted    || 0,

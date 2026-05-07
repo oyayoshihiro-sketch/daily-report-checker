@@ -492,6 +492,16 @@ select.inp { cursor: pointer; }
 .wl-refl-bar  { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
 .wl-refl-track{ flex: 1; height: 5px; background: var(--c-bdr); border-radius: 3px; overflow: hidden; }
 .wl-refl-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, #f59e0b, #22c55e); }
+/* 振返レベル＆成長コメント行 */
+.wl-card-note {
+  grid-column: 1 / -1;
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px;
+  padding: 5px 14px 6px 24px;
+  border-top: 1px dashed var(--c-bdr2);
+  font-size: 11.5px; line-height: 1.5;
+}
+.wl-refl-lbl { font-weight: 700; white-space: nowrap; }
+.wl-growth-txt { color: var(--c-t2); }
 .wl-dept-ttl {
   font-size: 13px; font-weight: 800; color: var(--c-t1);
   display: flex; align-items: center; gap: 8px;
@@ -1902,6 +1912,23 @@ function wlHeroDaily(dash) {
   ${wlPostStatsRow(morningN, eveningN, dualN, '人')}`;
 }
 
+/* ─── 振返レベルラベル ─── */
+function reflLevelLabel(score) {
+  if (score == null) return null;
+  if (score >= 0.80) return { lbl: '深い振り返り',       color: '#16a34a' };
+  if (score >= 0.60) return { lbl: '標準的な振り返り',   color: '#2563eb' };
+  if (score >= 0.40) return { lbl: 'やや浅い振り返り',   color: '#d97706' };
+  return               { lbl: '振り返りが浅め',         color: '#dc2626' };
+}
+
+function wlNoteRow(score, growthNote) {
+  const lv = reflLevelLabel(score);
+  if (!lv && !growthNote) return '';
+  const lblHtml  = lv ? `<span class="wl-refl-lbl" style="color:${lv.color}">📝 ${lv.lbl}（${score.toFixed(2)}）</span>` : '';
+  const noteHtml = growthNote ? `<span class="wl-growth-txt">→ ${growthNote}</span>` : '';
+  return `<div class="wl-card-note">${lblHtml}${noteHtml}</div>`;
+}
+
 /* ─── 日次メンバーカード ─── */
 function renderWlCard(m) {
   const { user, check } = m;
@@ -1934,6 +1961,7 @@ function renderWlCard(m) {
       <div class="wl-card-meta">${grp ? grp + ' ·' : ''} <span>${postIco}</span></div>
     </div>
     <div class="wl-row-stats">${wIco}${lIco}${refStr}</div>
+    ${wlNoteRow(ref, check.growth_note)}
   </div>`;
 }
 
@@ -2019,6 +2047,8 @@ function renderWlWeekCard(m) {
 
   const avgRef = summary.avg_reflection;
   const refStr = avgRef != null ? `<span style="color:#c2410c">📝${avgRef.toFixed(2)}</span>` : '';
+  const latestNote = Object.entries(days).sort(([a],[b]) => b.localeCompare(a))
+    .map(([,d]) => d.growth_note).find(n => n) || null;
 
   return `<div class="wl-card ${topSig}">
     <div class="wl-sig-dot"></div>
@@ -2031,6 +2061,7 @@ function renderWlWeekCard(m) {
       <span style="color:#7c3aed">💪${summary.losses_count}</span>
       ${refStr}
     </div>
+    ${wlNoteRow(avgRef, latestNote)}
   </div>`;
 }
 
@@ -2244,10 +2275,12 @@ function wlBodyWeekly(data) {
 function renderWlMonthCard(m) {
   const name = m.user.real_name || m.user.display_name || m.user.user_id;
   const grp  = m.user.group ? (m.user.group.parent?.name ? `${m.user.group.parent.name} › ${m.user.group.name}` : m.user.group.name) : '';
-  const { summary } = m;
+  const { summary, days } = m;
   const topSig = summary.signals.red > 0 ? 'sig-red' : summary.signals.yellow > 0 ? 'sig-yellow' : summary.posted_count > 0 ? 'sig-green' : 'sig-none';
   const avgRef = summary.avg_reflection;
   const refStr = avgRef != null ? `<span style="color:#c2410c">📝${avgRef.toFixed(2)}</span>` : '';
+  const latestNote = Object.entries(days).sort(([a],[b]) => b.localeCompare(a))
+    .map(([,d]) => d.growth_note).find(n => n) || null;
 
   return `<div class="wl-card ${topSig}">
     <div class="wl-sig-dot"></div>
@@ -2260,6 +2293,7 @@ function renderWlMonthCard(m) {
       <span style="color:#7c3aed">💪${summary.losses_count}日</span>
       ${refStr}
     </div>
+    ${wlNoteRow(avgRef, latestNote)}
   </div>`;
 }
 
