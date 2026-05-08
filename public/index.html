@@ -478,13 +478,34 @@ select.inp { cursor: pointer; }
 .wl-verdict.win  { background: #eff6ff; color: #1d4ed8; border: 1.5px solid #93c5fd; }
 .wl-verdict.loss { background: #faf5ff; color: #7c3aed; border: 1.5px solid #c4b5fd; }
 .wl-verdict.none { background: #f8fafc; color: #94a3b8; border: 1.5px dashed #e2e8f0; font-weight: 600; }
-/* 週次 日付ドット */
-.wl-day-dots { display: inline-flex; gap: 2px; }
-.wl-dd { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
-.wl-dd.win    { background: #93c5fd; }
-.wl-dd.loss   { background: #c4b5fd; }
-.wl-dd.none   { background: #d1fae5; }
-.wl-dd.np     { background: #f1f5f9; border: 1px solid #e2e8f0; }
+/* 週次カレンダー */
+.wl-week-card { grid-template-columns: 1fr !important; align-items: start !important; }
+.wl-wcard-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.wl-wcard-record { display: flex; gap: 12px; align-items: center; flex-shrink: 0; }
+.wl-wcard-score-item { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.wl-wcard-score-num { font-size: 18px; font-weight: 900; line-height: 1; }
+.wl-wcard-score-lbl { font-size: 10px; font-weight: 700; color: var(--c-t3); }
+.wl-week-cal {
+  display: grid; grid-template-columns: repeat(5, 1fr);
+  gap: 4px; margin-top: 8px;
+}
+.wl-wc-cell {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 6px 4px; border-radius: 6px;
+}
+.wl-wc-dow { font-size: 10px; font-weight: 700; color: var(--c-t4); }
+.wl-wc-val { font-size: 12px; font-weight: 900; }
+.wl-wc-date { font-size: 9px; color: var(--c-t4); }
+.wl-wc-cell.win  { background: #dbeafe; }
+.wl-wc-cell.win  .wl-wc-val { color: #1d4ed8; }
+.wl-wc-cell.win  .wl-wc-dow { color: #3b82f6; }
+.wl-wc-cell.loss { background: #ede9fe; }
+.wl-wc-cell.loss .wl-wc-val { color: #7c3aed; }
+.wl-wc-cell.loss .wl-wc-dow { color: #8b5cf6; }
+.wl-wc-cell.none { background: #dcfce7; }
+.wl-wc-cell.none .wl-wc-val { color: #16a34a; }
+.wl-wc-cell.np   { background: #f1f5f9; }
+.wl-wc-cell.np   .wl-wc-val { color: #cbd5e1; }
 /* 振返バー（ヒーロー/カード共通） */
 .wl-refl-bar  { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
 .wl-refl-track{ flex: 1; height: 5px; background: var(--c-bdr); border-radius: 3px; overflow: hidden; }
@@ -2075,30 +2096,55 @@ function renderWlWeekCard(m) {
   const name = m.user.real_name || m.user.display_name || m.user.user_id;
   const grp  = m.user.group ? (m.user.group.parent?.name ? `${m.user.group.parent.name} › ${m.user.group.name}` : m.user.group.name) : '';
   const { summary, days } = m;
-  const topSig = summary.signals.red > 0 ? 'sig-red' : summary.signals.yellow > 0 ? 'sig-yellow' : summary.posted_count > 0 ? 'sig-green' : 'sig-none';
 
-  const dots = Object.entries(days).map(([date, d]) => {
+  // 平日（月〜金）のみ、日付順にソート
+  const weekdays = Object.entries(days)
+    .filter(([date]) => { const dow = new Date(date + 'T12:00:00Z').getDay(); return dow >= 1 && dow <= 5; })
+    .sort(([a], [b]) => a.localeCompare(b));
+
+  // 平日ベースの勝ち/負けカウント
+  const wdWins   = weekdays.filter(([, d]) => d.wins_text).length;
+  const wdLosses = weekdays.filter(([, d]) => !d.wins_text && d.losses_text).length;
+
+  // カレンダーセル
+  const calCells = weekdays.map(([date, d]) => {
     const dow = WL_DAY_JA[new Date(date + 'T12:00:00Z').getDay()];
+    const md  = date.slice(5).replace('-', '/');
     const cls = !d.posted ? 'np' : d.wins_text ? 'win' : d.losses_text ? 'loss' : 'none';
-    const lbl = `${dow} ${date.slice(5)}: ${!d.posted ? '未投稿' : d.wins_text ? '🏆勝ち' : d.losses_text ? '💪負け' : '投稿済'}`;
-    return `<div class="wl-dd ${cls}" title="${lbl}"></div>`;
+    const val = cls === 'win' ? '勝' : cls === 'loss' ? '負' : cls === 'none' ? '○' : '−';
+    const tip = `${dow} ${md}: ${cls === 'win' ? '🏆勝ち' : cls === 'loss' ? '💪負け' : cls === 'none' ? '投稿済' : '未投稿'}`;
+    return `<div class="wl-wc-cell ${cls}" title="${tip}">
+      <div class="wl-wc-dow">${dow}</div>
+      <div class="wl-wc-val">${val}</div>
+      <div class="wl-wc-date">${md}</div>
+    </div>`;
   }).join('');
 
   const avgRef = summary.avg_reflection;
-  const refStr = avgRef != null ? `<span style="color:#c2410c;font-size:12px;font-weight:600">📝${avgRef.toFixed(2)}</span>` : '';
   const latestNote = Object.entries(days).sort(([a],[b]) => b.localeCompare(a))
     .map(([,d]) => d.growth_note).find(n => n) || null;
+  const refStr = avgRef != null
+    ? `<span style="color:#c2410c;font-size:11px;font-weight:700">📝${avgRef.toFixed(2)}</span>` : '';
 
-  return `<div class="wl-card">
-    <div>
-      <div class="wl-card-name">${name}</div>
-      <div class="wl-card-meta">${grp ? grp + ' ·' : ''} ${summary.posted_count}/${summary.total_days}日 <span class="wl-day-dots">${dots}</span></div>
+  return `<div class="wl-card wl-week-card">
+    <div class="wl-wcard-header">
+      <div>
+        <div class="wl-card-name">${name}</div>
+        ${grp ? `<div class="wl-card-meta">${grp}</div>` : ''}
+      </div>
+      <div class="wl-wcard-record">
+        <div class="wl-wcard-score-item">
+          <div class="wl-wcard-score-num" style="color:#1d4ed8">${wdWins}</div>
+          <div class="wl-wcard-score-lbl">🏆 勝</div>
+        </div>
+        <div class="wl-wcard-score-item">
+          <div class="wl-wcard-score-num" style="color:#7c3aed">${wdLosses}</div>
+          <div class="wl-wcard-score-lbl">💪 敗</div>
+        </div>
+        ${refStr}
+      </div>
     </div>
-    <div class="wl-row-stats">
-      <span style="color:#1d4ed8;font-weight:800">🏆${summary.wins_count}</span>
-      <span style="color:#7c3aed;font-weight:800">💪${summary.losses_count}</span>
-      ${refStr}
-    </div>
+    ${weekdays.length ? `<div class="wl-week-cal">${calCells}</div>` : ''}
     ${wlNoteRow(avgRef, latestNote)}
   </div>`;
 }
