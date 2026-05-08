@@ -1887,10 +1887,13 @@ function wlPostStatsRow(morningN, eveningN, dualN, unit) {
 }
 
 function wlHeroDaily(dash) {
-  const posted     = dash.members.filter(m => m.check?.posted);
+  const all        = dash.members;
+  const posted     = all.filter(m => m.check?.posted);
+  // 一人一判定: wins_text 優先、次に losses_text、どちらもなければ記録なし
   const withWins   = posted.filter(m => m.check?.wins_text);
-  const withLosses = posted.filter(m => m.check?.losses_text);
-  const notPosted  = dash.members.filter(m => !m.check?.posted);
+  const withLosses = posted.filter(m => !m.check?.wins_text && m.check?.losses_text);
+  const noRecord   = posted.filter(m => !m.check?.wins_text && !m.check?.losses_text);
+  const notPosted  = all.filter(m => !m.check?.posted);
   const refScores  = posted.map(m => m.check?.reflection_score).filter(s => s != null);
   const avgRef     = refScores.length ? refScores.reduce((a,b) => a+b, 0) / refScores.length : null;
 
@@ -1907,6 +1910,10 @@ function wlHeroDaily(dash) {
       <div class="wl-hero-num" style="color:#7c3aed">${withLosses.length}</div>
       <div class="wl-hero-lbl" style="color:#7c3aed">💪 負け</div>
     </div>
+    ${noRecord.length ? `<div class="wl-hero-card" style="background:#f8fafc;border:2px solid var(--c-bdr)">
+      <div class="wl-hero-num" style="color:var(--c-t3)">${noRecord.length}</div>
+      <div class="wl-hero-lbl" style="color:var(--c-t3)">— 記録なし</div>
+    </div>` : ''}
     <div class="wl-hero-card refl">
       <div class="wl-hero-num" style="color:#c2410c">${avgRef != null ? avgRef.toFixed(2) : '—'}</div>
       <div class="wl-hero-lbl" style="color:#c2410c">📝 平均振返スコア</div>
@@ -1980,7 +1987,7 @@ function wlDeptBlock(dept, direct, cardFn) {
   const sigSort = m => m.check?.wins_text?0:m.check?.losses_text?1:m.check?.posted?2:3;
   const pc = all.filter(m => m.check?.posted).length;
   const wc = all.filter(m => m.check?.wins_text).length;
-  const lc = all.filter(m => m.check?.losses_text).length;
+  const lc = all.filter(m => !m.check?.wins_text && m.check?.losses_text).length;
 
   let body = '';
   for (const child of (dept.children||[])) {
@@ -1988,7 +1995,7 @@ function wlDeptBlock(dept, direct, cardFn) {
     if (!childAll.length) continue;
     const sgPc = childAll.filter(m => m.check?.posted).length;
     const sgWc = childAll.filter(m => m.check?.wins_text).length;
-    const sgLc = childAll.filter(m => m.check?.losses_text).length;
+    const sgLc = childAll.filter(m => !m.check?.wins_text && m.check?.losses_text).length;
     body += `<div class="wl-sub-dept">
       <div class="wl-sub-dept-ttl">▸ ${child.name}
         <span style="font-size:11px;color:var(--c-t3)">${sgPc}/${childAll.length}名</span>
@@ -2075,6 +2082,8 @@ function wlHeroRange(members, zeroLabel) {
   const notPosted = members.filter(m => m.summary.posted_count === 0);
   const totalWins   = posted.reduce((s,m) => s + m.summary.wins_count, 0);
   const totalLosses = posted.reduce((s,m) => s + m.summary.losses_count, 0);
+  const totalPostedDays = members.reduce((s,m) => s + m.summary.posted_count, 0);
+  const noRecordDays = totalPostedDays - totalWins - totalLosses;
   const refScores   = posted.map(m => m.summary.avg_reflection).filter(s => s != null);
   const avgRef      = refScores.length ? refScores.reduce((a,b) => a+b, 0) / refScores.length : null;
 
@@ -2097,6 +2106,10 @@ function wlHeroRange(members, zeroLabel) {
       <div class="wl-hero-num" style="color:#c2410c">${avgRef != null ? avgRef.toFixed(2) : '—'}</div>
       <div class="wl-hero-lbl" style="color:#c2410c">📝 平均振返スコア</div>
     </div>
+    ${noRecordDays > 0 ? `<div class="wl-hero-card" style="background:#f8fafc;border:2px solid #e2e8f0">
+      <div class="wl-hero-num" style="color:#94a3b8">${noRecordDays}</div>
+      <div class="wl-hero-lbl" style="color:#94a3b8">— 記録なし（延べ）</div>
+    </div>` : ''}
     ${notPosted.length ? `<div class="wl-hero-card" style="background:#fff5f5;border:2px solid var(--c-redBr)">
       <div class="wl-hero-num" style="color:var(--c-red)">${notPosted.length}</div>
       <div class="wl-hero-lbl" style="color:var(--c-red)">📭 ${zeroLabel}</div>

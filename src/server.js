@@ -389,8 +389,9 @@ function createServer() {
         }
 
         const postedDays  = Object.values(days).filter(d => d.posted);
+        // wins_text が優先（旧データで両方セットされている場合も wins を勝ちとして扱う）
         const winsDays    = postedDays.filter(d => d.wins_text);
-        const lossesDays  = postedDays.filter(d => d.losses_text);
+        const lossesDays  = postedDays.filter(d => !d.wins_text && d.losses_text);
         const refScores   = postedDays.map(d => d.reflection_score).filter(s => s != null);
         const sigCounts   = { red: 0, yellow: 0, green: 0 };
         for (const d of postedDays) { if (d.signal) sigCounts[d.signal] = (sigCounts[d.signal] || 0) + 1; }
