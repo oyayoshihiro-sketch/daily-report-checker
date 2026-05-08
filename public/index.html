@@ -602,6 +602,9 @@ select.inp { cursor: pointer; }
 .wl-rankings-wrap {
   display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 20px;
 }
+.wl-rankings-wrap.daily4 {
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+}
 @media (max-width: 640px) { .wl-rankings-wrap { grid-template-columns: 1fr; } }
 .wl-ranking {
   background: linear-gradient(135deg, #fefce8 0%, #eff6ff 100%);
@@ -611,6 +614,16 @@ select.inp { cursor: pointer; }
   background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
   border-color: #6ee7b7;
 }
+.wl-ranking.alert-morn {
+  background: linear-gradient(135deg, #fff7ed 0%, #fef9c3 100%);
+  border-color: #fbbf24;
+}
+.wl-ranking.alert-morn .wl-ranking-ttl { color: #78350f; }
+.wl-ranking.alert-dual {
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border-color: #7dd3fc;
+}
+.wl-ranking.alert-dual .wl-ranking-ttl { color: #0c4a6e; }
 .wl-ranking-ttl {
   font-size: 13px; font-weight: 900; color: #92400e; letter-spacing: .02em;
   margin-bottom: 12px; display: flex; align-items: center; gap: 6px;
@@ -618,7 +631,7 @@ select.inp { cursor: pointer; }
 .wl-ranking.refl .wl-ranking-ttl { color: #065f46; }
 .wl-ranking.refl .wl-rank-row { border-color: rgba(110,231,183,.4); }
 .wl-ranking.refl .wl-rank-score { color: #059669; }
-.wl-rank-list { display: flex; flex-direction: column; gap: 7px; }
+.wl-rank-list { display: flex; flex-direction: column; gap: 7px; max-height: 260px; overflow-y: auto; }
 .wl-rank-row {
   display: grid; grid-template-columns: 28px 1fr auto; gap: 10px;
   align-items: center; padding: 7px 12px;
@@ -640,6 +653,16 @@ select.inp { cursor: pointer; }
   white-space: nowrap;
 }
 .wl-rank-score span { font-size: 10.5px; font-weight: 600; color: var(--c-t3); }
+.wl-alert-row {
+  display: grid; grid-template-columns: 1fr auto; gap: 8px;
+  align-items: center; padding: 6px 12px;
+  background: rgba(255,255,255,.75); border-radius: 8px;
+  border: 1px solid rgba(251,191,36,.3);
+}
+.wl-alert-ok {
+  text-align: center; padding: 14px 0;
+  color: #16a34a; font-size: 13px; font-weight: 700;
+}
 
 /* ── バディくんチャット ── */
 .buddy-toggle-btn {
@@ -1805,7 +1828,10 @@ function renderWinsV() {
       fetchDash().then(render);
       return `<div class="spin-wrap"><div class="spinner"></div></div>`;
     }
-    return wlBar(period) + wlHeroDaily(S.dash) + ranking + wlBodyDaily(S.dash);
+    const dailyRanking = monthData
+      ? wlRankingsDaily(monthData.members, S.dash)
+      : `<div style="padding:8px 20px 4px;color:var(--c-t4);font-size:12px">🏆📝 月次ランキング集計中...</div>`;
+    return wlBar(period) + wlHeroDaily(S.dash) + dailyRanking + wlBodyDaily(S.dash);
   }
 
   const range = period === 'weekly' ? wlWeekRange(S.date) : monthRange;
@@ -2381,6 +2407,88 @@ function wlRankings(members) {
   if (!wins) return `<div class="wl-rankings-wrap" style="grid-template-columns:1fr">${refl}</div>`;
   if (!refl) return `<div class="wl-rankings-wrap" style="grid-template-columns:1fr">${wins}</div>`;
   return `<div class="wl-rankings-wrap">${wins}${refl}</div>`;
+}
+
+/* ─── 日次アラートボード ─── */
+function wlMorningAlert(dash) {
+  const all = dash.members || [];
+  const noMorning = all.filter(m => !m.check?.morning_posted);
+  const ttl = `☀️ 朝未投稿${noMorning.length ? ' ' + noMorning.length + '名' : ''}`;
+  if (!noMorning.length) {
+    return `<div class="wl-ranking alert-morn">
+      <div class="wl-ranking-ttl">${ttl}</div>
+      <div class="wl-alert-ok">✅ 全員投稿済み</div>
+    </div>`;
+  }
+  const sorted = [...noMorning].sort((a, b) => {
+    const ae = a.check?.evening_posted ? 0 : 1;
+    const be = b.check?.evening_posted ? 0 : 1;
+    return ae - be;
+  });
+  const rows = sorted.map(m => {
+    const name = m.user.real_name || m.user.display_name || m.user.user_id;
+    const grp  = m.user.group ? (m.user.group.parent?.name ? `${m.user.group.parent.name} › ${m.user.group.name}` : m.user.group.name) : '';
+    const tag  = m.check?.evening_posted
+      ? `<span style="font-size:11px;font-weight:700;color:#6366f1">🌙夜のみ</span>`
+      : `<span style="font-size:11px;font-weight:700;color:#ef4444">📭未投稿</span>`;
+    return `<div class="wl-alert-row">
+      <div class="wl-rank-info">
+        <div class="wl-rank-name">${name}</div>
+        ${grp ? `<div class="wl-rank-sub">${grp}</div>` : ''}
+      </div>
+      ${tag}
+    </div>`;
+  }).join('');
+  return `<div class="wl-ranking alert-morn">
+    <div class="wl-ranking-ttl">${ttl}</div>
+    <div class="wl-rank-list">${rows}</div>
+  </div>`;
+}
+
+function wlDualAlert(dash) {
+  const all = dash.members || [];
+  const noDual = all.filter(m => m.check?.posted && !(m.check?.morning_posted && m.check?.evening_posted));
+  const ttl = `☀️🌙 2回未達成${noDual.length ? ' ' + noDual.length + '名' : ''}`;
+  if (!noDual.length) {
+    return `<div class="wl-ranking alert-dual">
+      <div class="wl-ranking-ttl">${ttl}</div>
+      <div class="wl-alert-ok">✅ 全員2回達成</div>
+    </div>`;
+  }
+  const sorted = [...noDual].sort((a, b) => {
+    const at = a.check?.morning_posted ? 0 : 1;
+    const bt = b.check?.morning_posted ? 0 : 1;
+    return at - bt;
+  });
+  const rows = sorted.map(m => {
+    const name = m.user.real_name || m.user.display_name || m.user.user_id;
+    const grp  = m.user.group ? (m.user.group.parent?.name ? `${m.user.group.parent.name} › ${m.user.group.name}` : m.user.group.name) : '';
+    const tag  = m.check?.morning_posted
+      ? `<span style="font-size:11px;font-weight:700;color:#f97316">☀️朝のみ</span>`
+      : `<span style="font-size:11px;font-weight:700;color:#6366f1">🌙夜のみ</span>`;
+    return `<div class="wl-alert-row">
+      <div class="wl-rank-info">
+        <div class="wl-rank-name">${name}</div>
+        ${grp ? `<div class="wl-rank-sub">${grp}</div>` : ''}
+      </div>
+      ${tag}
+    </div>`;
+  }).join('');
+  return `<div class="wl-ranking alert-dual">
+    <div class="wl-ranking-ttl">${ttl}</div>
+    <div class="wl-rank-list">${rows}</div>
+  </div>`;
+}
+
+// 日次タブ専用: ランキング2枚 + アラート2枚を4グリッドで並べる
+function wlRankingsDaily(monthMembers, dash) {
+  const wins = monthMembers ? wlWinsRanking(monthMembers) : '';
+  const refl = monthMembers ? wlReflRanking(monthMembers) : '';
+  const morn = dash ? wlMorningAlert(dash) : '';
+  const dual = dash ? wlDualAlert(dash) : '';
+  const panels = [wins, refl, morn, dual].filter(Boolean);
+  if (!panels.length) return '';
+  return `<div class="wl-rankings-wrap daily4">${panels.join('')}</div>`;
 }
 
 function wlBodyMonthly(data) {
