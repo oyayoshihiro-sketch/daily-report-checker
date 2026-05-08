@@ -461,32 +461,29 @@ select.inp { cursor: pointer; }
   margin-bottom: 14px; box-shadow: var(--sh0);
 }
 .wl-card {
-  display: grid; grid-template-columns: 10px 1fr auto;
-  align-items: center; gap: 10px;
+  display: grid; grid-template-columns: 1fr auto;
+  align-items: center; gap: 12px;
   padding: 8px 14px; background: #fff;
   border-bottom: 1px solid var(--c-bdr2);
   transition: background .1s;
 }
 .wl-card:last-child { border-bottom: none; }
 .wl-card:hover { background: #fafffe; }
-.wl-card.sig-red    { background: #fff5f5; }
-.wl-card.sig-yellow { background: #fffdf0; }
-.wl-card.sig-none   { opacity: .5; }
-.wl-sig-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
-.wl-card.sig-red    .wl-sig-dot { background: var(--c-red); }
-.wl-card.sig-yellow .wl-sig-dot { background: var(--c-amb); }
-.wl-card.sig-green  .wl-sig-dot { background: var(--c-grn); }
-.wl-card.sig-none   .wl-sig-dot { background: #cbd5e1; }
+.wl-card.wl-nopost { opacity: .45; }
 .wl-card-name { font-weight: 700; font-size: 13px; color: var(--c-t1); }
 .wl-card-meta { font-size: 10.5px; color: var(--c-t3); margin-top: 1px; display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
 .wl-row-stats { display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+/* 勝ち/負けバッジ */
+.wl-verdict { font-size: 12px; font-weight: 800; padding: 3px 11px; border-radius: 20px; white-space: nowrap; }
+.wl-verdict.win  { background: #eff6ff; color: #1d4ed8; border: 1.5px solid #93c5fd; }
+.wl-verdict.loss { background: #faf5ff; color: #7c3aed; border: 1.5px solid #c4b5fd; }
+.wl-verdict.none { background: #f8fafc; color: #94a3b8; border: 1.5px dashed #e2e8f0; font-weight: 600; }
 /* 週次 日付ドット */
 .wl-day-dots { display: inline-flex; gap: 2px; }
 .wl-dd { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
-.wl-dd.red    { background: var(--c-red); }
-.wl-dd.yellow { background: var(--c-amb); }
-.wl-dd.green  { background: var(--c-grn); }
-.wl-dd.none   { background: #bfdbfe; }
+.wl-dd.win    { background: #93c5fd; }
+.wl-dd.loss   { background: #c4b5fd; }
+.wl-dd.none   { background: #d1fae5; }
 .wl-dd.np     { background: #f1f5f9; border: 1px solid #e2e8f0; }
 /* 振返バー（ヒーロー/カード共通） */
 .wl-refl-bar  { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
@@ -1944,33 +1941,32 @@ function renderWlCard(m) {
   const { user, check } = m;
   const name = user.real_name || user.display_name || user.user_id;
   const grp  = user.group ? (user.group.parent?.name ? `${user.group.parent.name} › ${user.group.name}` : user.group.name) : '';
-  const sig  = check?.signal || null;
 
   if (!check?.posted) {
-    return `<div class="wl-card sig-none">
-      <div class="wl-sig-dot"></div>
+    return `<div class="wl-card wl-nopost">
       <div>
         <div class="wl-card-name">${name}</div>
         ${grp ? `<div class="wl-card-meta">${grp}</div>` : ''}
       </div>
-      <span style="font-size:11px;color:var(--c-t4)">📭 未投稿</span>
+      <span class="wl-verdict none">📭 未投稿</span>
     </div>`;
   }
 
-  const sigCls  = sig === 'red' ? 'sig-red' : sig === 'yellow' ? 'sig-yellow' : sig === 'green' ? 'sig-green' : 'sig-none';
-  const postIco = `${check.morning_posted ? '☀️' : ''}${check.evening_posted ? '🌙' : ''}`;
-  const ref     = check.reflection_score;
-  const wIco    = check.wins_text   ? `<span style="color:#1d4ed8;font-weight:800">🏆✓</span>` : `<span style="color:#cbd5e1">🏆—</span>`;
-  const lIco    = check.losses_text ? `<span style="color:#7c3aed;font-weight:800">💪✓</span>` : `<span style="color:#cbd5e1">💪—</span>`;
-  const refStr  = ref != null ? `<span style="color:#c2410c">📝${ref.toFixed(2)}</span>` : '';
+  const postIco  = `${check.morning_posted ? '☀️' : ''}${check.evening_posted ? '🌙' : ''}`;
+  const ref      = check.reflection_score;
+  const refStr   = ref != null ? `<span style="color:#c2410c;font-size:12px;font-weight:600">📝${ref.toFixed(2)}</span>` : '';
+  const verdict  = check.wins_text
+    ? `<span class="wl-verdict win">🏆 勝ち</span>`
+    : check.losses_text
+      ? `<span class="wl-verdict loss">💪 負け</span>`
+      : `<span class="wl-verdict none">— 未記録</span>`;
 
-  return `<div class="wl-card ${sigCls}">
-    <div class="wl-sig-dot"></div>
+  return `<div class="wl-card">
     <div>
       <div class="wl-card-name">${name}</div>
       <div class="wl-card-meta">${grp ? grp + ' ·' : ''} <span>${postIco}</span></div>
     </div>
-    <div class="wl-row-stats">${wIco}${lIco}${refStr}</div>
+    <div class="wl-row-stats">${verdict}${refStr}</div>
     ${wlNoteRow(ref, check.growth_note)}
   </div>`;
 }
@@ -1981,7 +1977,7 @@ function wlDeptBlock(dept, direct, cardFn) {
     ...(direct||[])
   ];
   if (!all.length) return '';
-  const sigSort = m => m.check?.signal==='red'?0:m.check?.signal==='yellow'?1:m.check?.signal==='green'?2:3;
+  const sigSort = m => m.check?.wins_text?0:m.check?.losses_text?1:m.check?.posted?2:3;
   const pc = all.filter(m => m.check?.posted).length;
   const wc = all.filter(m => m.check?.wins_text).length;
   const lc = all.filter(m => m.check?.losses_text).length;
@@ -2050,25 +2046,24 @@ function renderWlWeekCard(m) {
 
   const dots = Object.entries(days).map(([date, d]) => {
     const dow = WL_DAY_JA[new Date(date + 'T12:00:00Z').getDay()];
-    const cls = !d.posted ? 'np' : (d.signal || 'none');
-    const lbl = `${dow} ${date.slice(5)}: ${!d.posted ? '未投稿' : d.wins_text ? '🏆' + d.wins_text : '投稿済'}`;
+    const cls = !d.posted ? 'np' : d.wins_text ? 'win' : d.losses_text ? 'loss' : 'none';
+    const lbl = `${dow} ${date.slice(5)}: ${!d.posted ? '未投稿' : d.wins_text ? '🏆勝ち' : d.losses_text ? '💪負け' : '投稿済'}`;
     return `<div class="wl-dd ${cls}" title="${lbl}"></div>`;
   }).join('');
 
   const avgRef = summary.avg_reflection;
-  const refStr = avgRef != null ? `<span style="color:#c2410c">📝${avgRef.toFixed(2)}</span>` : '';
+  const refStr = avgRef != null ? `<span style="color:#c2410c;font-size:12px;font-weight:600">📝${avgRef.toFixed(2)}</span>` : '';
   const latestNote = Object.entries(days).sort(([a],[b]) => b.localeCompare(a))
     .map(([,d]) => d.growth_note).find(n => n) || null;
 
-  return `<div class="wl-card ${topSig}">
-    <div class="wl-sig-dot"></div>
+  return `<div class="wl-card">
     <div>
       <div class="wl-card-name">${name}</div>
       <div class="wl-card-meta">${grp ? grp + ' ·' : ''} ${summary.posted_count}/${summary.total_days}日 <span class="wl-day-dots">${dots}</span></div>
     </div>
     <div class="wl-row-stats">
-      <span style="color:#1d4ed8">🏆${summary.wins_count}</span>
-      <span style="color:#7c3aed">💪${summary.losses_count}</span>
+      <span style="color:#1d4ed8;font-weight:800">🏆${summary.wins_count}</span>
+      <span style="color:#7c3aed;font-weight:800">💪${summary.losses_count}</span>
       ${refStr}
     </div>
     ${wlNoteRow(avgRef, latestNote)}
@@ -2230,7 +2225,7 @@ function wlRangeDeptBlock(grp, cardFn) {
   const allMembers    = [...subGroups.flatMap(sg => sg.members), ...directMembers];
   if (!allMembers.length) return '';
 
-  const sigSort = m => m.summary.signals.red>0?0:m.summary.signals.yellow>0?1:m.summary.posted_count>0?2:3;
+  const sigSort = m => m.summary.wins_count>0?0:m.summary.losses_count>0?1:m.summary.posted_count>0?2:3;
   const pc = allMembers.filter(m => m.summary.posted_count > 0).length;
   const wc = allMembers.reduce((s,m) => s + m.summary.wins_count,  0);
   const lc = allMembers.reduce((s,m) => s + m.summary.losses_count, 0);
@@ -2292,15 +2287,14 @@ function renderWlMonthCard(m) {
   const latestNote = Object.entries(days).sort(([a],[b]) => b.localeCompare(a))
     .map(([,d]) => d.growth_note).find(n => n) || null;
 
-  return `<div class="wl-card ${topSig}">
-    <div class="wl-sig-dot"></div>
+  return `<div class="wl-card">
     <div>
       <div class="wl-card-name">${name}</div>
       <div class="wl-card-meta">${grp ? grp + ' ·' : ''} 投稿${summary.posted_count}/${summary.total_days}日</div>
     </div>
     <div class="wl-row-stats">
-      <span style="color:#1d4ed8">🏆${summary.wins_count}日</span>
-      <span style="color:#7c3aed">💪${summary.losses_count}日</span>
+      <span style="color:#1d4ed8;font-weight:800">🏆${summary.wins_count}日</span>
+      <span style="color:#7c3aed;font-weight:800">💪${summary.losses_count}日</span>
       ${refStr}
     </div>
     ${wlNoteRow(avgRef, latestNote)}
