@@ -602,15 +602,25 @@ select.inp { cursor: pointer; }
 .wl-month-date { font-size: 10px; font-weight: 700; color: var(--c-t4); padding-top: 2px; }
 .wl-month-wl { font-size: 11.5px; line-height: 1.5; }
 /* 月次ランキング */
+.wl-rankings-wrap {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 20px;
+}
+@media (max-width: 640px) { .wl-rankings-wrap { grid-template-columns: 1fr; } }
 .wl-ranking {
   background: linear-gradient(135deg, #fefce8 0%, #eff6ff 100%);
   border: 1.5px solid #fcd34d; border-radius: var(--r); padding: 16px 20px;
-  margin-bottom: 20px;
+}
+.wl-ranking.refl {
+  background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
+  border-color: #6ee7b7;
 }
 .wl-ranking-ttl {
   font-size: 13px; font-weight: 900; color: #92400e; letter-spacing: .02em;
   margin-bottom: 12px; display: flex; align-items: center; gap: 6px;
 }
+.wl-ranking.refl .wl-ranking-ttl { color: #065f46; }
+.wl-ranking.refl .wl-rank-row { border-color: rgba(110,231,183,.4); }
+.wl-ranking.refl .wl-rank-score { color: #059669; }
 .wl-rank-list { display: flex; flex-direction: column; gap: 7px; }
 .wl-rank-row {
   display: grid; grid-template-columns: 28px 1fr auto; gap: 10px;
@@ -1790,8 +1800,8 @@ function renderWinsV() {
   if (!S.winsRange[monthKey]) fetchWinsRange(monthRange.from, monthRange.to).then(render);
   const monthData  = S.winsRange[monthKey] || null;
   const ranking    = monthData
-    ? wlWinsRanking(monthData.members)
-    : `<div style="padding:8px 20px 4px;color:var(--c-t4);font-size:12px">🏆 月次ランキング集計中...</div>`;
+    ? wlRankings(monthData.members)
+    : `<div style="padding:8px 20px 4px;color:var(--c-t4);font-size:12px">🏆📝 月次ランキング集計中...</div>`;
 
   if (period === 'daily') {
     if (!S.dash || S.dash.date !== S.date) {
@@ -2310,13 +2320,11 @@ function wlWinsRanking(members) {
   const rows = top5.map((m, i) => {
     const name = m.user.real_name || m.user.display_name || m.user.user_id;
     const grp  = m.user.group ? (m.user.group.parent?.name ? `${m.user.group.parent.name} › ${m.user.group.name}` : m.user.group.name) : '';
-    const avgRef = m.summary.avg_reflection;
-    const sub  = [grp, avgRef != null ? `振返 ${avgRef.toFixed(2)}` : ''].filter(Boolean).join(' · ');
     return `<div class="wl-rank-row">
       <div class="wl-rank-num ${NUM_CLS[i]}">${MEDALS[i]}</div>
       <div class="wl-rank-info">
         <div class="wl-rank-name">${name}</div>
-        ${sub ? `<div class="wl-rank-sub">${sub}</div>` : ''}
+        ${grp ? `<div class="wl-rank-sub">${grp}</div>` : ''}
       </div>
       <div class="wl-rank-score">${m.summary.wins_count}<span> 日</span></div>
     </div>`;
@@ -2326,6 +2334,46 @@ function wlWinsRanking(members) {
     <div class="wl-ranking-ttl">🏆 月間勝利ランキング TOP${top5.length}</div>
     <div class="wl-rank-list">${rows}</div>
   </div>`;
+}
+
+function wlReflRanking(members) {
+  const MEDALS = ['🥇','🥈','🥉','4️⃣','5️⃣'];
+  const NUM_CLS = ['r1','r2','r3','r4','r5'];
+  const top5 = [...members]
+    .filter(m => m.summary.avg_reflection != null)
+    .sort((a,b) => b.summary.avg_reflection - a.summary.avg_reflection)
+    .slice(0, 5);
+
+  if (!top5.length) return '';
+
+  const rows = top5.map((m, i) => {
+    const name  = m.user.real_name || m.user.display_name || m.user.user_id;
+    const grp   = m.user.group ? (m.user.group.parent?.name ? `${m.user.group.parent.name} › ${m.user.group.name}` : m.user.group.name) : '';
+    const score = m.summary.avg_reflection;
+    const lv    = reflLevelLabel(score);
+    return `<div class="wl-rank-row">
+      <div class="wl-rank-num ${NUM_CLS[i]}">${MEDALS[i]}</div>
+      <div class="wl-rank-info">
+        <div class="wl-rank-name">${name}</div>
+        <div class="wl-rank-sub">${[grp, lv ? lv.lbl : ''].filter(Boolean).join(' · ')}</div>
+      </div>
+      <div class="wl-rank-score">${score.toFixed(2)}</div>
+    </div>`;
+  }).join('');
+
+  return `<div class="wl-ranking refl">
+    <div class="wl-ranking-ttl">📝 月間振返レベルランキング TOP${top5.length}</div>
+    <div class="wl-rank-list">${rows}</div>
+  </div>`;
+}
+
+function wlRankings(members) {
+  const wins = wlWinsRanking(members);
+  const refl = wlReflRanking(members);
+  if (!wins && !refl) return '';
+  if (!wins) return `<div class="wl-rankings-wrap" style="grid-template-columns:1fr">${refl}</div>`;
+  if (!refl) return `<div class="wl-rankings-wrap" style="grid-template-columns:1fr">${wins}</div>`;
+  return `<div class="wl-rankings-wrap">${wins}${refl}</div>`;
 }
 
 function wlBodyMonthly(data) {
