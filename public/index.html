@@ -2382,8 +2382,12 @@ function wlWinsRanking(members) {
   const MEDALS = ['🥇','🥈','🥉','4️⃣','5️⃣'];
   const NUM_CLS = ['r1','r2','r3','r4','r5'];
   const top5 = [...members]
-    .filter(m => m.summary.wins_count > 0)
-    .sort((a,b) => b.summary.wins_count - a.summary.wins_count)
+    .filter(m => m.summary.posted_count > 0 && m.summary.wins_count > 0)
+    .map(m => ({
+      ...m,
+      winRate: Math.round(m.summary.wins_count / m.summary.posted_count * 100),
+    }))
+    .sort((a, b) => b.winRate - a.winRate || b.summary.wins_count - a.summary.wins_count)
     .slice(0, 5);
 
   if (!top5.length) return '';
@@ -2395,14 +2399,14 @@ function wlWinsRanking(members) {
       <div class="wl-rank-num ${NUM_CLS[i]}">${MEDALS[i]}</div>
       <div class="wl-rank-info">
         <div class="wl-rank-name">${name}</div>
-        ${grp ? `<div class="wl-rank-sub">${grp}</div>` : ''}
+        <div class="wl-rank-sub">${[grp, `${m.summary.wins_count}勝/${m.summary.posted_count}日`].filter(Boolean).join(' · ')}</div>
       </div>
-      <div class="wl-rank-score">${m.summary.wins_count}<span> 日</span></div>
+      <div class="wl-rank-score">${m.winRate}<span>%</span></div>
     </div>`;
   }).join('');
 
   return `<div class="wl-ranking">
-    <div class="wl-ranking-ttl">🏆 月間勝利ランキング TOP${top5.length}</div>
+    <div class="wl-ranking-ttl">🏆 月間勝率ランキング TOP${top5.length}</div>
     <div class="wl-rank-list">${rows}</div>
   </div>`;
 }
