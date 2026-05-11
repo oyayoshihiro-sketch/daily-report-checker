@@ -674,6 +674,16 @@ select.inp { cursor: pointer; }
   white-space: nowrap;
 }
 .wl-rank-score span { font-size: 10.5px; font-weight: 600; color: var(--c-t3); }
+.wl-ranking-ttl { cursor: pointer; user-select: none; }
+.wl-ranking-ttl:hover { opacity: .8; }
+.wl-rank-toggle { margin-left: auto; font-size: 11px; color: var(--c-t3); font-weight: 600; }
+.wl-rank-more {
+  width: 100%; margin-top: 8px; padding: 5px 0;
+  background: transparent; border: none;
+  font-size: 11px; font-weight: 700; color: var(--c-t3);
+  cursor: pointer; text-align: center; letter-spacing: .03em;
+}
+.wl-rank-more:hover { color: var(--c-t1); }
 .wl-alert-row {
   display: grid; grid-template-columns: 1fr auto; gap: 8px;
   align-items: center; padding: 6px 12px;
@@ -1936,10 +1946,9 @@ function wlPostStatsRow(morningN, eveningN, dualN, unit) {
 function wlHeroDaily(dash) {
   const all        = dash.members;
   const posted     = all.filter(m => m.check?.posted);
-  // 一人一判定: wins_text 優先、次に losses_text、どちらもなければ記録なし
+  // 勝ち判定なし = 負け扱い
   const withWins   = posted.filter(m => m.check?.wins_text);
-  const withLosses = posted.filter(m => !m.check?.wins_text && m.check?.losses_text);
-  const noRecord   = posted.filter(m => !m.check?.wins_text && !m.check?.losses_text);
+  const withLosses = posted.filter(m => !m.check?.wins_text);
   const notPosted  = all.filter(m => !m.check?.posted);
   const refScores  = posted.map(m => m.check?.reflection_score).filter(s => s != null);
   const avgRef     = refScores.length ? refScores.reduce((a,b) => a+b, 0) / refScores.length : null;
@@ -1957,10 +1966,6 @@ function wlHeroDaily(dash) {
       <div class="wl-hero-num" style="color:#7c3aed">${withLosses.length}</div>
       <div class="wl-hero-lbl" style="color:#7c3aed">💪 負け</div>
     </div>
-    ${noRecord.length ? `<div class="wl-hero-card" style="background:#f8fafc;border:2px solid var(--c-bdr)">
-      <div class="wl-hero-num" style="color:var(--c-t3)">${noRecord.length}</div>
-      <div class="wl-hero-lbl" style="color:var(--c-t3)">— 記録なし</div>
-    </div>` : ''}
     <div class="wl-hero-card refl">
       <div class="wl-hero-num" style="color:#c2410c">${avgRef != null ? avgRef.toFixed(2) : '—'}</div>
       <div class="wl-hero-lbl" style="color:#c2410c">📝 平均振返スコア</div>
@@ -2011,9 +2016,7 @@ function renderWlCard(m) {
   const refStr   = ref != null ? `<span style="color:#c2410c;font-size:12px;font-weight:600">📝${ref.toFixed(2)}</span>` : '';
   const verdict  = check.wins_text
     ? `<span class="wl-verdict win">🏆 勝ち</span>`
-    : check.losses_text
-      ? `<span class="wl-verdict loss">💪 負け</span>`
-      : `<span class="wl-verdict none">— 未記録</span>`;
+    : `<span class="wl-verdict loss">💪 負け</span>`;
 
   return `<div class="wl-card">
     <div>
@@ -2031,10 +2034,10 @@ function wlDeptBlock(dept, direct, cardFn) {
     ...(direct||[])
   ];
   if (!all.length) return '';
-  const sigSort = m => m.check?.wins_text?0:m.check?.losses_text?1:m.check?.posted?2:3;
+  const sigSort = m => m.check?.wins_text?0:m.check?.posted?1:2;
   const pc = all.filter(m => m.check?.posted).length;
   const wc = all.filter(m => m.check?.wins_text).length;
-  const lc = all.filter(m => !m.check?.wins_text && m.check?.losses_text).length;
+  const lc = all.filter(m => m.check?.posted && !m.check?.wins_text).length;
 
   let body = '';
   for (const child of (dept.children||[])) {
@@ -2042,7 +2045,7 @@ function wlDeptBlock(dept, direct, cardFn) {
     if (!childAll.length) continue;
     const sgPc = childAll.filter(m => m.check?.posted).length;
     const sgWc = childAll.filter(m => m.check?.wins_text).length;
-    const sgLc = childAll.filter(m => !m.check?.wins_text && m.check?.losses_text).length;
+    const sgLc = childAll.filter(m => m.check?.posted && !m.check?.wins_text).length;
     body += `<div class="wl-sub-dept">
       <div class="wl-sub-dept-ttl">▸ ${child.name}
         <span style="font-size:11px;color:var(--c-t3)">${sgPc}/${childAll.length}名</span>
@@ -2102,17 +2105,17 @@ function renderWlWeekCard(m) {
     .filter(([date]) => { const dow = new Date(date + 'T12:00:00Z').getDay(); return dow >= 1 && dow <= 5; })
     .sort(([a], [b]) => a.localeCompare(b));
 
-  // 平日ベースの勝ち/負けカウント
+  // 平日ベースの勝ち/負けカウント（勝ち判定なし＝負け）
   const wdWins   = weekdays.filter(([, d]) => d.wins_text).length;
-  const wdLosses = weekdays.filter(([, d]) => !d.wins_text && d.losses_text).length;
+  const wdLosses = weekdays.filter(([, d]) => d.posted && !d.wins_text).length;
 
   // カレンダーセル
   const calCells = weekdays.map(([date, d]) => {
     const dow = WL_DAY_JA[new Date(date + 'T12:00:00Z').getDay()];
     const md  = date.slice(5).replace('-', '/');
-    const cls = !d.posted ? 'np' : d.wins_text ? 'win' : d.losses_text ? 'loss' : 'none';
-    const val = cls === 'win' ? '勝' : cls === 'loss' ? '負' : cls === 'none' ? '○' : '−';
-    const tip = `${dow} ${md}: ${cls === 'win' ? '🏆勝ち' : cls === 'loss' ? '💪負け' : cls === 'none' ? '投稿済' : '未投稿'}`;
+    const cls = !d.posted ? 'np' : d.wins_text ? 'win' : 'loss';
+    const val = cls === 'win' ? '勝' : cls === 'loss' ? '負' : '−';
+    const tip = `${dow} ${md}: ${cls === 'win' ? '🏆勝ち' : cls === 'loss' ? '💪負け' : '未投稿'}`;
     return `<div class="wl-wc-cell ${cls}" title="${tip}">
       <div class="wl-wc-dow">${dow}</div>
       <div class="wl-wc-val">${val}</div>
@@ -2144,10 +2147,9 @@ function renderWlWeekCard(m) {
 function wlHeroRange(members, zeroLabel) {
   const posted    = members.filter(m => m.summary.posted_count > 0);
   const notPosted = members.filter(m => m.summary.posted_count === 0);
-  const totalWins   = posted.reduce((s,m) => s + m.summary.wins_count, 0);
-  const totalLosses = posted.reduce((s,m) => s + m.summary.losses_count, 0);
+  const totalWins      = posted.reduce((s,m) => s + m.summary.wins_count, 0);
   const totalPostedDays = members.reduce((s,m) => s + m.summary.posted_count, 0);
-  const noRecordDays = totalPostedDays - totalWins - totalLosses;
+  const totalLosses    = totalPostedDays - totalWins;
   const refScores   = posted.map(m => m.summary.avg_reflection).filter(s => s != null);
   const avgRef      = refScores.length ? refScores.reduce((a,b) => a+b, 0) / refScores.length : null;
 
@@ -2170,10 +2172,6 @@ function wlHeroRange(members, zeroLabel) {
       <div class="wl-hero-num" style="color:#c2410c">${avgRef != null ? avgRef.toFixed(2) : '—'}</div>
       <div class="wl-hero-lbl" style="color:#c2410c">📝 平均振返スコア</div>
     </div>
-    ${noRecordDays > 0 ? `<div class="wl-hero-card" style="background:#f8fafc;border:2px solid #e2e8f0">
-      <div class="wl-hero-num" style="color:#94a3b8">${noRecordDays}</div>
-      <div class="wl-hero-lbl" style="color:#94a3b8">— 記録なし（延べ）</div>
-    </div>` : ''}
     ${notPosted.length ? `<div class="wl-hero-card" style="background:#fff5f5;border:2px solid var(--c-redBr)">
       <div class="wl-hero-num" style="color:var(--c-red)">${notPosted.length}</div>
       <div class="wl-hero-lbl" style="color:var(--c-red)">📭 ${zeroLabel}</div>
@@ -2302,10 +2300,10 @@ function wlRangeDeptBlock(grp, cardFn) {
   const allMembers    = [...subGroups.flatMap(sg => sg.members), ...directMembers];
   if (!allMembers.length) return '';
 
-  const sigSort = m => m.summary.wins_count>0?0:m.summary.losses_count>0?1:m.summary.posted_count>0?2:3;
+  const sigSort = m => m.summary.wins_count>0?0:m.summary.posted_count>0?1:2;
   const pc = allMembers.filter(m => m.summary.posted_count > 0).length;
-  const wc = allMembers.reduce((s,m) => s + m.summary.wins_count,  0);
-  const lc = allMembers.reduce((s,m) => s + m.summary.losses_count, 0);
+  const wc = allMembers.reduce((s,m) => s + m.summary.wins_count, 0);
+  const lc = allMembers.reduce((s,m) => s + m.summary.posted_count - m.summary.wins_count, 0);
   const refScores = allMembers.map(m => m.summary.avg_reflection).filter(s => s != null);
   const avgRef    = refScores.length ? (refScores.reduce((a,b) => a+b,0)/refScores.length).toFixed(2) : null;
 
@@ -2315,7 +2313,7 @@ function wlRangeDeptBlock(grp, cardFn) {
     const sorted = [...sg.members].sort((a,b) => sigSort(a) - sigSort(b));
     const sgPc = sg.members.filter(m => m.summary.posted_count > 0).length;
     const sgWc = sg.members.reduce((s,m) => s + m.summary.wins_count, 0);
-    const sgLc = sg.members.reduce((s,m) => s + m.summary.losses_count, 0);
+    const sgLc = sg.members.reduce((s,m) => s + m.summary.posted_count - m.summary.wins_count, 0);
     body += `<div class="wl-sub-dept">
       <div class="wl-sub-dept-ttl">▸ ${sg.name}
         <span style="font-size:11px;color:var(--c-t3)">${sgPc}/${sg.members.length}名</span>
@@ -2371,7 +2369,7 @@ function renderWlMonthCard(m) {
     </div>
     <div class="wl-row-stats">
       <span style="color:#1d4ed8;font-weight:800">🏆${summary.wins_count}日</span>
-      <span style="color:#7c3aed;font-weight:800">💪${summary.losses_count}日</span>
+      <span style="color:#7c3aed;font-weight:800">💪${summary.posted_count - summary.wins_count}日</span>
       ${refStr}
     </div>
     ${wlNoteRow(avgRef, latestNote)}
@@ -2381,22 +2379,28 @@ function renderWlMonthCard(m) {
 function wlWinsRanking(members) {
   const MEDALS = ['🥇','🥈','🥉','4️⃣','5️⃣'];
   const NUM_CLS = ['r1','r2','r3','r4','r5'];
-  const top5 = [...members]
+  if (!S.wlRankExpand) S.wlRankExpand = {};
+  const expanded = !!S.wlRankExpand.wins;
+
+  const all = [...members]
     .filter(m => m.summary.posted_count > 0 && m.summary.wins_count > 0)
     .map(m => ({
       ...m,
       winRate: Math.round(m.summary.wins_count / m.summary.posted_count * 100),
     }))
-    .sort((a, b) => b.winRate - a.winRate || b.summary.wins_count - a.summary.wins_count)
-    .slice(0, 5);
+    .sort((a, b) => b.winRate - a.winRate || b.summary.wins_count - a.summary.wins_count);
 
-  if (!top5.length) return '';
+  if (!all.length) return '';
+  const list = expanded ? all : all.slice(0, 5);
 
-  const rows = top5.map((m, i) => {
-    const name = m.user.real_name || m.user.display_name || m.user.user_id;
-    const grp  = m.user.group ? (m.user.group.parent?.name ? `${m.user.group.parent.name} › ${m.user.group.name}` : m.user.group.name) : '';
+  const rows = list.map((m, i) => {
+    const rank = i + 1;
+    const medal = i < MEDALS.length ? MEDALS[i] : rank;
+    const cls   = i < NUM_CLS.length ? NUM_CLS[i] : 'r5';
+    const name  = m.user.real_name || m.user.display_name || m.user.user_id;
+    const grp   = m.user.group ? (m.user.group.parent?.name ? `${m.user.group.parent.name} › ${m.user.group.name}` : m.user.group.name) : '';
     return `<div class="wl-rank-row">
-      <div class="wl-rank-num ${NUM_CLS[i]}">${MEDALS[i]}</div>
+      <div class="wl-rank-num ${cls}">${medal}</div>
       <div class="wl-rank-info">
         <div class="wl-rank-name">${name}</div>
         <div class="wl-rank-sub">${[grp, `${m.summary.wins_count}勝/${m.summary.posted_count}日`].filter(Boolean).join(' · ')}</div>
@@ -2405,29 +2409,44 @@ function wlWinsRanking(members) {
     </div>`;
   }).join('');
 
+  const toggleLbl = expanded ? '▲ 閉じる' : `▼ 全${all.length}名を表示`;
+  const moreBtn   = all.length > 5
+    ? `<button class="wl-rank-more" onclick="S.wlRankExpand.wins=!S.wlRankExpand.wins;render()">${toggleLbl}</button>`
+    : '';
+
   return `<div class="wl-ranking">
-    <div class="wl-ranking-ttl">🏆 月間勝率ランキング TOP${top5.length}</div>
+    <div class="wl-ranking-ttl" onclick="S.wlRankExpand.wins=!S.wlRankExpand.wins;render()">
+      🏆 月間勝率ランキング${expanded ? '' : ` TOP${list.length}`}
+      <span class="wl-rank-toggle">${expanded ? '▲' : '▼'}</span>
+    </div>
     <div class="wl-rank-list">${rows}</div>
+    ${moreBtn}
   </div>`;
 }
 
 function wlReflRanking(members) {
   const MEDALS = ['🥇','🥈','🥉','4️⃣','5️⃣'];
   const NUM_CLS = ['r1','r2','r3','r4','r5'];
-  const top5 = [...members]
+  if (!S.wlRankExpand) S.wlRankExpand = {};
+  const expanded = !!S.wlRankExpand.refl;
+
+  const all = [...members]
     .filter(m => m.summary.avg_reflection != null)
-    .sort((a,b) => b.summary.avg_reflection - a.summary.avg_reflection)
-    .slice(0, 5);
+    .sort((a,b) => b.summary.avg_reflection - a.summary.avg_reflection);
 
-  if (!top5.length) return '';
+  if (!all.length) return '';
+  const list = expanded ? all : all.slice(0, 5);
 
-  const rows = top5.map((m, i) => {
+  const rows = list.map((m, i) => {
+    const rank  = i + 1;
+    const medal = i < MEDALS.length ? MEDALS[i] : rank;
+    const cls   = i < NUM_CLS.length ? NUM_CLS[i] : 'r5';
     const name  = m.user.real_name || m.user.display_name || m.user.user_id;
     const grp   = m.user.group ? (m.user.group.parent?.name ? `${m.user.group.parent.name} › ${m.user.group.name}` : m.user.group.name) : '';
     const score = m.summary.avg_reflection;
     const lv    = reflLevelLabel(score);
     return `<div class="wl-rank-row">
-      <div class="wl-rank-num ${NUM_CLS[i]}">${MEDALS[i]}</div>
+      <div class="wl-rank-num ${cls}">${medal}</div>
       <div class="wl-rank-info">
         <div class="wl-rank-name">${name}</div>
         <div class="wl-rank-sub">${[grp, lv ? lv.lbl : ''].filter(Boolean).join(' · ')}</div>
@@ -2436,9 +2455,18 @@ function wlReflRanking(members) {
     </div>`;
   }).join('');
 
+  const toggleLbl = expanded ? '▲ 閉じる' : `▼ 全${all.length}名を表示`;
+  const moreBtn   = all.length > 5
+    ? `<button class="wl-rank-more" onclick="S.wlRankExpand.refl=!S.wlRankExpand.refl;render()">${toggleLbl}</button>`
+    : '';
+
   return `<div class="wl-ranking refl">
-    <div class="wl-ranking-ttl">📝 月間振返レベルランキング TOP${top5.length}</div>
+    <div class="wl-ranking-ttl" onclick="S.wlRankExpand.refl=!S.wlRankExpand.refl;render()">
+      📝 月間振返レベルランキング${expanded ? '' : ` TOP${list.length}`}
+      <span class="wl-rank-toggle">${expanded ? '▲' : '▼'}</span>
+    </div>
     <div class="wl-rank-list">${rows}</div>
+    ${moreBtn}
   </div>`;
 }
 
