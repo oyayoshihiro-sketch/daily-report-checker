@@ -2580,10 +2580,18 @@ function wlUnpostedRanking(monthMembers) {
   if (!S.wlRankExpand) S.wlRankExpand = {};
   const expanded = !!S.wlRankExpand.unposted;
 
+  // 平日（月〜金）のみカウント
+  const isWeekday = date => { const d = new Date(date + 'T12:00:00Z').getDay(); return d >= 1 && d <= 5; };
+
   const all = [...monthMembers]
-    .map(m => ({ ...m, unpostedDays: m.summary.total_days - m.summary.posted_count }))
+    .map(m => {
+      const weekdayEntries = Object.entries(m.days || {}).filter(([date]) => isWeekday(date));
+      const totalWeekdays  = weekdayEntries.length;
+      const postedWeekdays = weekdayEntries.filter(([, d]) => d.posted).length;
+      return { ...m, totalWeekdays, postedWeekdays, unpostedDays: totalWeekdays - postedWeekdays };
+    })
     .filter(m => m.unpostedDays > 0)
-    .sort((a, b) => b.unpostedDays - a.unpostedDays || a.summary.posted_count - b.summary.posted_count);
+    .sort((a, b) => b.unpostedDays - a.unpostedDays || a.postedWeekdays - b.postedWeekdays);
 
   if (!all.length) {
     return `<div class="wl-ranking alert-unposted">
@@ -2593,13 +2601,13 @@ function wlUnpostedRanking(monthMembers) {
   }
 
   const list = expanded ? all : all.slice(0, 5);
-  const rows = list.map((m, i) => {
+  const rows = list.map(m => {
     const name = m.user.real_name || m.user.display_name || m.user.user_id;
     const grp  = m.user.group ? (m.user.group.parent?.name ? `${m.user.group.parent.name} › ${m.user.group.name}` : m.user.group.name) : '';
     return `<div class="wl-alert-row">
       <div class="wl-rank-info">
         <div class="wl-rank-name">${name}</div>
-        <div class="wl-rank-sub">${[grp, `投稿${m.summary.posted_count}/${m.summary.total_days}日`].filter(Boolean).join(' · ')}</div>
+        <div class="wl-rank-sub">${[grp, `投稿${m.postedWeekdays}/${m.totalWeekdays}営業日`].filter(Boolean).join(' · ')}</div>
       </div>
       <span style="font-size:15px;font-weight:900;color:#b91c1c">${m.unpostedDays}<span style="font-size:10px;font-weight:600;color:#ef4444">日</span></span>
     </div>`;
@@ -2612,7 +2620,7 @@ function wlUnpostedRanking(monthMembers) {
 
   return `<div class="wl-ranking alert-unposted">
     <div class="wl-ranking-ttl" onclick="S.wlRankExpand.unposted=!S.wlRankExpand.unposted;render()">
-      📭 未投稿数ランキング${expanded ? '' : ` TOP${list.length}`}
+      📭 未投稿数
       <span class="wl-rank-toggle">${expanded ? '▲' : '▼'}</span>
     </div>
     <div class="wl-rank-list">${rows}</div>
