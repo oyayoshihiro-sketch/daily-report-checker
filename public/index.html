@@ -2585,7 +2585,7 @@ function wlUnpostedRanking(monthMembers) {
 
   const all = [...monthMembers]
     .map(m => {
-      const weekdayEntries = Object.entries(m.days || {}).filter(([date]) => isWeekday(date));
+      const weekdayEntries = Object.entries(m.days || {}).filter(([date]) => isWeekday(date) && date <= S.date);
       const totalWeekdays  = weekdayEntries.length;
       const postedWeekdays = weekdayEntries.filter(([, d]) => d.posted).length;
       return { ...m, totalWeekdays, postedWeekdays, unpostedDays: totalWeekdays - postedWeekdays };
