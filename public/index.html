@@ -635,6 +635,13 @@ select.inp { cursor: pointer; }
   background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
   border-color: #6ee7b7;
 }
+.wl-ranking.week-wins {
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border-color: #38bdf8;
+}
+.wl-ranking.week-wins .wl-ranking-ttl { color: #0369a1; }
+.wl-ranking.week-wins .wl-rank-row { border-color: rgba(56,189,248,.3); }
+.wl-ranking.week-wins .wl-rank-score { color: #0369a1; }
 .wl-ranking.alert-morn {
   background: linear-gradient(135deg, #fff7ed 0%, #fef9c3 100%);
   border-color: #fbbf24;
@@ -2339,15 +2346,65 @@ function wlRangeDeptBlock(grp, cardFn) {
   </div>`;
 }
 
+function wlWeekWinsRanking(members) {
+  const MEDALS = ['🥇','🥈','🥉','4️⃣','5️⃣'];
+  const NUM_CLS = ['r1','r2','r3','r4','r5'];
+  if (!S.wlRankExpand) S.wlRankExpand = {};
+  const expanded = !!S.wlRankExpand.weekWins;
+
+  const all = [...members]
+    .filter(m => m.summary.posted_count > 0)
+    .map(m => ({
+      ...m,
+      winRate: Math.round(m.summary.wins_count / m.summary.posted_count * 100),
+    }))
+    .sort((a, b) => b.winRate - a.winRate || b.summary.wins_count - a.summary.wins_count);
+
+  if (!all.length) return '';
+  const list = expanded ? all : all.slice(0, 5);
+
+  const rows = list.map((m, i) => {
+    const medal = i < MEDALS.length ? MEDALS[i] : i + 1;
+    const cls   = i < NUM_CLS.length ? NUM_CLS[i] : 'r5';
+    const name  = m.user.real_name || m.user.display_name || m.user.user_id;
+    const grp   = m.user.group ? (m.user.group.parent?.name ? `${m.user.group.parent.name} › ${m.user.group.name}` : m.user.group.name) : '';
+    return `<div class="wl-rank-row">
+      <div class="wl-rank-num ${cls}">${medal}</div>
+      <div class="wl-rank-info">
+        <div class="wl-rank-name">${name}</div>
+        <div class="wl-rank-sub">${[grp, `${m.summary.wins_count}勝/${m.summary.posted_count}日`].filter(Boolean).join(' · ')}</div>
+      </div>
+      <div class="wl-rank-score">${m.winRate}<span>%</span></div>
+    </div>`;
+  }).join('');
+
+  const toggleLbl = expanded ? '▲ 閉じる' : `▼ 全${all.length}名を表示`;
+  const moreBtn   = all.length > 5
+    ? `<button class="wl-rank-more" onclick="S.wlRankExpand.weekWins=!S.wlRankExpand.weekWins;render()">${toggleLbl}</button>`
+    : '';
+
+  return `<div class="wl-ranking week-wins">
+    <div class="wl-ranking-ttl" onclick="S.wlRankExpand.weekWins=!S.wlRankExpand.weekWins;render()">
+      🏆 今週の勝率ランキング${expanded ? '' : ` TOP${list.length}`}
+      <span class="wl-rank-toggle">${expanded ? '▲' : '▼'}</span>
+    </div>
+    <div class="wl-rank-list">${rows}</div>
+    ${moreBtn}
+  </div>`;
+}
+
 function wlBodyWeekly(data) {
   const { members } = data;
   const { groups, ungrouped } = wlGroupMembers(members);
+  const weekRanking = wlWeekWinsRanking(members);
   const rateGrid = wlOrgRateGridRange(groups, ungrouped);
   const depts = [
     ...groups.map(g => wlRangeDeptBlock(g, renderWlWeekCard)),
     ...(ungrouped.length ? [wlRangeDeptBlock({name:'未分類', members: ungrouped}, renderWlWeekCard)] : []),
   ].filter(Boolean).join('');
-  return wlHeroRange(members, '今週ゼロ') + rateGrid
+  return wlHeroRange(members, '今週ゼロ')
+    + (weekRanking ? `<div class="wl-rankings-wrap" style="grid-template-columns:1fr;margin-bottom:16px">${weekRanking}</div>` : '')
+    + rateGrid
     + (depts || `<div class="empty"><div class="empty-ico">📭</div><div class="empty-ttl">データなし</div></div>`);
 }
 
