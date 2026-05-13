@@ -647,11 +647,13 @@ select.inp { cursor: pointer; }
   border-color: #fbbf24;
 }
 .wl-ranking.alert-morn .wl-ranking-ttl { color: #78350f; }
-.wl-ranking.alert-dual {
-  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
-  border-color: #7dd3fc;
+.wl-ranking.alert-unposted {
+  background: linear-gradient(135deg, #fff5f5 0%, #fef2f2 100%);
+  border-color: #fca5a5;
 }
-.wl-ranking.alert-dual .wl-ranking-ttl { color: #0c4a6e; }
+.wl-ranking.alert-unposted .wl-ranking-ttl { color: #b91c1c; cursor: pointer; }
+.wl-ranking.alert-unposted .wl-ranking-ttl:hover { opacity: .8; }
+.wl-ranking.alert-unposted .wl-alert-row { border-color: rgba(252,165,165,.3); }
 .wl-ranking-ttl {
   font-size: 13px; font-weight: 900; color: #92400e; letter-spacing: .02em;
   margin-bottom: 12px; display: flex; align-items: center; gap: 6px;
@@ -2572,48 +2574,59 @@ function wlMorningAlert(dash) {
   </div>`;
 }
 
-function wlDualAlert(dash) {
-  const all = dash.members || [];
-  const noDual = all.filter(m => m.check?.posted && !(m.check?.morning_posted && m.check?.evening_posted));
-  const ttl = `☀️🌙 2回未達成${noDual.length ? ' ' + noDual.length + '名' : ''}`;
-  if (!noDual.length) {
-    return `<div class="wl-ranking alert-dual">
-      <div class="wl-ranking-ttl">${ttl}</div>
-      <div class="wl-alert-ok">✅ 全員2回達成</div>
+// 月間未投稿数ランキング（未投稿日数が多い順）
+function wlUnpostedRanking(monthMembers) {
+  if (!monthMembers) return '';
+  if (!S.wlRankExpand) S.wlRankExpand = {};
+  const expanded = !!S.wlRankExpand.unposted;
+
+  const all = [...monthMembers]
+    .map(m => ({ ...m, unpostedDays: m.summary.total_days - m.summary.posted_count }))
+    .filter(m => m.unpostedDays > 0)
+    .sort((a, b) => b.unpostedDays - a.unpostedDays || a.summary.posted_count - b.summary.posted_count);
+
+  if (!all.length) {
+    return `<div class="wl-ranking alert-unposted">
+      <div class="wl-ranking-ttl">📭 未投稿数</div>
+      <div class="wl-alert-ok" style="color:#16a34a">✅ 全員投稿済み</div>
     </div>`;
   }
-  const sorted = [...noDual].sort((a, b) => {
-    const at = a.check?.morning_posted ? 0 : 1;
-    const bt = b.check?.morning_posted ? 0 : 1;
-    return at - bt;
-  });
-  const rows = sorted.map(m => {
+
+  const list = expanded ? all : all.slice(0, 5);
+  const rows = list.map((m, i) => {
     const name = m.user.real_name || m.user.display_name || m.user.user_id;
     const grp  = m.user.group ? (m.user.group.parent?.name ? `${m.user.group.parent.name} › ${m.user.group.name}` : m.user.group.name) : '';
-    const tag  = m.check?.morning_posted
-      ? `<span style="font-size:11px;font-weight:700;color:#f97316">☀️朝のみ</span>`
-      : `<span style="font-size:11px;font-weight:700;color:#6366f1">🌙夜のみ</span>`;
     return `<div class="wl-alert-row">
       <div class="wl-rank-info">
         <div class="wl-rank-name">${name}</div>
-        ${grp ? `<div class="wl-rank-sub">${grp}</div>` : ''}
+        <div class="wl-rank-sub">${[grp, `投稿${m.summary.posted_count}/${m.summary.total_days}日`].filter(Boolean).join(' · ')}</div>
       </div>
-      ${tag}
+      <span style="font-size:15px;font-weight:900;color:#b91c1c">${m.unpostedDays}<span style="font-size:10px;font-weight:600;color:#ef4444">日</span></span>
     </div>`;
   }).join('');
-  return `<div class="wl-ranking alert-dual">
-    <div class="wl-ranking-ttl">${ttl}</div>
+
+  const toggleLbl = expanded ? '▲ 閉じる' : `▼ 全${all.length}名を表示`;
+  const moreBtn   = all.length > 5
+    ? `<button class="wl-rank-more" onclick="S.wlRankExpand.unposted=!S.wlRankExpand.unposted;render()">${toggleLbl}</button>`
+    : '';
+
+  return `<div class="wl-ranking alert-unposted">
+    <div class="wl-ranking-ttl" onclick="S.wlRankExpand.unposted=!S.wlRankExpand.unposted;render()">
+      📭 未投稿数ランキング${expanded ? '' : ` TOP${list.length}`}
+      <span class="wl-rank-toggle">${expanded ? '▲' : '▼'}</span>
+    </div>
     <div class="wl-rank-list">${rows}</div>
+    ${moreBtn}
   </div>`;
 }
 
 // 日次タブ専用: ランキング2枚 + アラート2枚を4グリッドで並べる
 function wlRankingsDaily(monthMembers, dash) {
-  const wins = monthMembers ? wlWinsRanking(monthMembers) : '';
-  const refl = monthMembers ? wlReflRanking(monthMembers) : '';
-  const morn = dash ? wlMorningAlert(dash) : '';
-  const dual = dash ? wlDualAlert(dash) : '';
-  const panels = [wins, refl, morn, dual].filter(Boolean);
+  const wins     = monthMembers ? wlWinsRanking(monthMembers) : '';
+  const refl     = monthMembers ? wlReflRanking(monthMembers) : '';
+  const morn     = dash ? wlMorningAlert(dash) : '';
+  const unposted = wlUnpostedRanking(monthMembers);
+  const panels   = [wins, refl, morn, unposted].filter(Boolean);
   if (!panels.length) return '';
   return `<div class="wl-rankings-wrap daily4">${panels.join('')}</div>`;
 }
