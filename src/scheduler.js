@@ -24,11 +24,10 @@ function reloadSummaryCron() {
   if (_summaryTask) { _summaryTask.stop(); _summaryTask = null; }
   const expr = cfg.get('summary_cron') || '0 23 * * *';
   console.log(`[scheduler] Cron: ${expr} (JST)`);
-  // 27時制では「前日」の日報サイクルが当日3:00に締まる。実行時刻に依らず取りこぼさないよう
-  // 直近2日（前日＋当日）を毎回再クロールする（upsertなので冪等）。
+  // 27時制では「前日」の日報サイクルが当日3:00に締まる。実行時刻・週末・cron取りこぼしに
+  // 耐えるよう、毎回 直近3日（前々日〜当日）を再クロールして自己修復する（upsertなので冪等）。
   _summaryTask = cron.schedule(expr, async () => {
-    await runCheckForDate(jstDateMinus(1));
-    await runCheckForDate(jstDateMinus(0));
+    for (let d = 2; d >= 0; d--) await runCheckForDate(jstDateMinus(d));
   }, { timezone: 'Asia/Tokyo' });
 }
 
