@@ -402,65 +402,23 @@ labelの値は GREEN / YELLOW / ORANGE / RED / CRITICAL のいずれか。
 followは懸念がない場合はnullとすること。`;
 
 const EVENING_PROMPT_DEFAULT = `## ロール
-あなたは日本の職場における感情分析・振り返りコーチの専門家です。
-夕方の日報（一日の振り返り）を読み、メンバーのコンディションと振り返りの質を評価してください。
+あなたは日本の職場における振り返りコーチの専門家です。
+夕方の日報（一日の振り返り）を読み、振り返りの質のみを評価してください。
 
----
-
-## スコアの定義
-
-コンディションスコアは 0.00〜1.00 の連続値です。
-
-  1.00 = 強いポジティブ（エネルギーに満ち、充実している）
-  0.00 = 強いネガティブ（疲弊・消耗・危機的状態）
-
-スコアは必ず以下の5段階のいずれかの帯域に収まるよう算出してください。
-
-  0.80〜1.00  GREEN    良好
-  0.60〜0.79  YELLOW   やや注意
-  0.40〜0.59  ORANGE   要観察
-  0.20〜0.39  RED      要対応
-  0.00〜0.19  CRITICAL 緊急対応
-
----
-
-## スコア帯域のアンカー定義
-
-【GREEN 0.80〜1.00】
-- 成果・進捗が具体的な数値・固有名詞つきで記述されている
-- 勝ちと負けが両方明確に記述され、学びや改善策もある
-- 感謝・協力者への言及が自然に含まれている
-- 明日の計画が具体的かつ能動的
-
-【YELLOW 0.60〜0.79】
-- 成果はあるが記述がやや淡白・形式的
-- 「一応」「ひとまず」等の薄い達成感が混在
-- 勝ちか負けのどちらか一方のみ記述されている
-
-【ORANGE 0.40〜0.59】
-- 「なんとか」「ひとまず」「一応」が複数回登場
-- 振り返りが形式的で具体性が薄い
-- 勝ち負けの振り返りがほぼない
-
-【RED 0.20〜0.39】
-- 失敗・遅延の報告があり、改善策がない
-- 体調・疲労への言及がある
-- 人物名・感謝表現が消えている
-
-【CRITICAL 0.00〜0.19】
-- 文章が極端に短い
-- 謝罪・自己否定が含まれる
-- 体調不良・疲弊の直接言及
+※ 勝ち・負けの判定はシステム側で行うため、出力不要です。
+※ コンディション・感情の評価は不要です。振り返りの質のみを見てください。
 
 ---
 
 ## 振り返りスコアの定義（reflection_score）
 
-0.80〜1.00: 勝ち・負けが具体的に明示され、学びや翌日の改善計画まで記述されている
-0.60〜0.79: 勝ち・負けはあるが、改善計画が不明確
-0.40〜0.59: 勝ちのみ、または負けのみの記述
-0.20〜0.39: 振り返りが形式的で具体性がない
-0.00〜0.19: ほぼ振り返りがない、または日報が非常に短い
+0.00〜1.00 の連続値で、振り返りの深さ・具体性を評価します。
+
+  0.80〜1.00: 振り返りが具体的で、学びや翌日の改善計画まで記述されている
+  0.60〜0.79: 振り返りはあるが、改善計画が不明確
+  0.40〜0.59: 振り返りが断片的
+  0.20〜0.39: 振り返りが形式的で具体性がない
+  0.00〜0.19: ほぼ振り返りがない、または日報が非常に短い
 
 ---
 
@@ -469,8 +427,6 @@ const EVENING_PROMPT_DEFAULT = `## ロール
 夕方の日報テキスト:
 {DAILY_REPORT_TEXT}
 
-前回スコア（参考）: {PREVIOUS_SCORE}  ※初回または不明の場合は null
-
 ---
 
 ## 出力フォーマット
@@ -478,19 +434,9 @@ const EVENING_PROMPT_DEFAULT = `## ロール
 JSONのみ返すこと。前置き・説明・コードブロック記号（\`\`\`）は一切不要。
 
 {
-  "score": 0.00,
-  "label": "GREEN",
-  "summary": "100字以内。断定せず観察として記述。",
-  "praise": "褒めポイント。具体的な成果や前向きな姿勢をもとに、マネージャーが声かけする際に使える表現で1〜2文。",
-  "follow": "フォローポイント。懸念点や気になる点があれば1〜2文。特になければnull。",
-  "wins": "今日の勝ち。成功した点・できたことを具体的に1〜3文。振り返り記述がない場合はnull。",
-  "losses": "今日の負け。課題・改善すべき点を具体的に1〜3文。振り返り記述がない場合はnull。",
   "reflection_score": 0.00,
-  "growth_note": "成長の観点・気づき。前回からの変化や学びを1〜2文。特になければnull。"
-}
-
-labelの値は GREEN / YELLOW / ORANGE / RED / CRITICAL のいずれか。
-praiseは必ず記述すること。followは懸念がない場合はnullとすること。`;
+  "growth_note": "成長の観点・気づき。学びや翌日の改善計画を1〜2文。特になければnull。"
+}`;
 
 const DEFAULT_CONFIG = [
   { key: 'late_night_hour',         value: '22',          description: '深夜フラグの閾値（この時間以降=深夜, 0-23 JST）' },
@@ -502,9 +448,11 @@ const DEFAULT_CONFIG = [
   { key: 'report_channel_id',       value: 'C056L3ZQLKD', description: '日報チャンネルID' },
   { key: 'workflow_bot_id',         value: '',            description: 'ワークフローBotのID（空=全ユーザーメッセージを収集）' },
   { key: 'user_id_regex',           value: '<@(U[A-Z0-9]+)>', description: '投稿者IDをテキストから抽出するregex（グループ1がuser_id）' },
-  { key: 'sentiment_prompt', value: SENTIMENT_PROMPT_DEFAULT, description: 'Claude に送る感情分析プロンプト（自由に編集可）' },
-  { key: 'evening_prompt',   value: EVENING_PROMPT_DEFAULT,   description: '夜の日報分析プロンプト（勝ち/負け/振り返りスコア付き）' },
-  { key: 'morning_prompt',   value: MORNING_PROMPT_DEFAULT,   description: '朝の日報分析プロンプト（意欲・計画の評価）' },
+  { key: 'sentiment_prompt',       value: SENTIMENT_PROMPT_DEFAULT, description: 'Claude に送る感情分析プロンプト（自由に編集可）' },
+  { key: 'evening_prompt',         value: EVENING_PROMPT_DEFAULT,   description: '夜の日報分析プロンプト（コンディション・振り返りスコア）' },
+  { key: 'morning_prompt',         value: MORNING_PROMPT_DEFAULT,   description: '朝の日報分析プロンプト（意欲・計画の評価）' },
+  { key: 'morning_report_channel', value: '',                        description: '朝の投稿率レポートを送るSlackチャンネルID（空=無効）' },
+  { key: 'morning_report_cron',    value: '0 9 * * 1-5',            description: '朝の投稿率レポートのcron式（JST, デフォルト=平日9時）' },
 ];
 
 function seedConfig() {
@@ -518,11 +466,18 @@ function seedConfig() {
     _db.prepare("UPDATE config SET value = ? WHERE key = 'sentiment_prompt'").run(SENTIMENT_PROMPT_DEFAULT);
     console.log('[db] sentiment_prompt を新デフォルトにアップグレードしました（praise/follow フィールド追加）');
   }
-  // evening_prompt / morning_prompt の初期シード（INSERT OR IGNORE で追加済み）
+  // evening_prompt: 初期シード、または wins/losses 出力を含む旧版を新版に強制更新
   const ep = _db.prepare("SELECT value FROM config WHERE key = 'evening_prompt'").get();
   if (!ep) {
-    _db.prepare("INSERT OR IGNORE INTO config (key, value, description) VALUES (?, ?, ?)").run('evening_prompt', EVENING_PROMPT_DEFAULT, '夜の日報分析プロンプト（勝ち/負け/振り返りスコア付き）');
+    _db.prepare("INSERT OR IGNORE INTO config (key, value, description) VALUES (?, ?, ?)").run('evening_prompt', EVENING_PROMPT_DEFAULT, '夜の日報分析プロンプト（コンディション・振り返りスコア）');
     console.log('[db] evening_prompt を初期シードしました');
+  } else if (ep.value.includes('"wins"') || ep.value.includes('"losses"')
+          || ep.value.includes('"score"') || ep.value.includes('"praise"') || ep.value.includes('コンディションスコア')) {
+    // 旧コンディション版（感情スコア/praise/follow を出力）を振り返り専用版に強制更新
+    _db.prepare("UPDATE config SET value = ?, description = ? WHERE key = 'evening_prompt'").run(
+      EVENING_PROMPT_DEFAULT, '夜の日報分析プロンプト（振り返りスコア・成長メモ）'
+    );
+    console.log('[db] evening_prompt を振り返り専用版に更新しました（コンディション分析を廃止）');
   }
   const mp = _db.prepare("SELECT value FROM config WHERE key = 'morning_prompt'").get();
   if (!mp) {

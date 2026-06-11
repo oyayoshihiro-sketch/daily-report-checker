@@ -5,9 +5,10 @@ const jwt = require('jsonwebtoken');
 const db = require('./db');
 // getReportByType is available via db module
 const cfg = require('./config');
-const { runCheckForDate, todayJst } = require('./checker');
+const { runCheckForDate, fetchAndStoreReports, checkMember, todayJst, extractVerdict, verdictForDay } = require('./checker');
 const { syncChannelMembers } = require('./members');
-const { reloadSummaryCron } = require('./scheduler');
+const { reloadSummaryCron, reloadMorningReportCron } = require('./scheduler');
+const { postMorningReport } = require('./reporter');
 const { sendInvitation, isSmtpConfigured } = require('./mailer');
 
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -108,7 +109,16 @@ function createServer() {
   server.use(express.json());
 
   // 静的ファイル（login.html, invite.html は認証不要）
-  server.use(express.static(path.join(__dirname, '..', 'public')));
+  // HTML は常に最新版を返す（ブラウザキャッシュ防止）
+  server.use(express.static(path.join(__dirname, '..', 'public'), {
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.html')) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+      }
+    },
+  }));
 
   // ── 認証 ─────────────────────────────────────────────────────────────────
   server.post('/auth/login', async (req, res) => {
@@ -191,28 +201,8 @@ function createServer() {
       const checkMap = Object.fromEntries(checks.map(c => [c.user_id, c]));
       const groupMap = Object.fromEntries(allGroups.map(g => [g.id, g]));
 
-      // フラグ＋スコアから信号を動的計算（旧DBレコードも正しく扱う）
-      // late_night_flag: 2=23時〜翌5時(赤), 1=22時台(黄), 0=通常
-      // late_post_flag:  1=翌5〜13時(投稿遅れ→黄)
-      const calcSig = c => {
-        if (!c?.posted) return null;
-        if (c.late_night_flag >= 2) return 'red';
-        const s = c.sentiment_score;
-        if (s !== null && s !== undefined) {
-          if (s <= 0.35) return 'red';
-        }
-        if (c.late_night_flag >= 1) return 'yellow';
-        if (s !== null && s !== undefined) {
-          if (s < 0.60) return 'yellow';
-        }
-        if (c.late_post_flag) return 'yellow';
-        if (c.volume_flag)    return 'yellow';
-        return 'green';
-      };
-
       const enriched = allMembers.map(member => {
         const check = checkMap[member.user_id] || null;
-        const report = check?.posted ? db.getReport(member.user_id, date) : null;  // 夕方優先
         let group = null;
         if (member.group_id && groupMap[member.group_id]) {
           const g = groupMap[member.group_id];
@@ -224,30 +214,25 @@ function createServer() {
           }
           group = { id: g.id, name: g.name, parent };
         }
-        const signal = calcSig(check);
-        const morningReport = check?.posted ? db.getReportByType(member.user_id, date, 'morning') : null;
-        const eveningReport = check?.posted ? db.getReportByType(member.user_id, date, 'evening') : null;
+        // 投稿有無・勝敗は日報テキストから都度判定（保存済みチェックに依存しない）
+        const morningReport = db.getReportByType(member.user_id, date, 'morning');
+        const eveningReport = db.getReportByType(member.user_id, date, 'evening');
+        const morningPosted = !!morningReport;
+        const eveningPosted = !!eveningReport;
+        const posted = morningPosted || eveningPosted;
+        const report = eveningReport || morningReport;  // 夕方優先
+        const verdict = verdictForDay({ eveningText: eveningReport?.text, morningText: morningReport?.text });
         return {
           user: { user_id: member.user_id, display_name: member.display_name, real_name: member.real_name, group },
-          check: check ? {
-            posted: check.posted, flag_count: check.flag_count,
-            late_night_flag: check.late_night_flag, late_post_flag: check.late_post_flag || 0,
-            sentiment_flag: check.sentiment_flag,
-            sentiment_score: check.sentiment_score, volume_flag: check.volume_flag,
-            volume_ratio: check.volume_ratio,
-            signal,
-            sentiment_summary: check.sentiment_summary || null,
-            praise_points: check.praise_points || null,
-            follow_points: check.follow_points || null,
-            morning_posted: check.morning_posted || 0,
-            evening_posted: check.evening_posted || 0,
-            dual_post_flag: check.dual_post_flag || 0,
-            morning_summary: check.morning_summary || null,
-            wins_text: check.wins_text || null,
-            losses_text: check.losses_text || null,
-            reflection_score: check.reflection_score != null ? check.reflection_score : null,
-            growth_note: check.growth_note || null,
-            composite: (check.late_night_flag||0) + (check.late_post_flag||0) + (check.sentiment_flag||0) + (check.volume_flag||0) + (check.dual_post_flag||0),
+          check: posted ? {
+            posted: 1,
+            morning_posted: morningPosted ? 1 : 0,
+            evening_posted: eveningPosted ? 1 : 0,
+            dual_post_flag: (morningPosted && eveningPosted) ? 0 : 1,
+            wins_text:   verdict === 'win'  ? '勝ち' : null,
+            losses_text: verdict === 'loss' ? '負け' : null,
+            reflection_score: check && check.reflection_score != null ? check.reflection_score : null,
+            growth_note: (check && check.growth_note) || null,
           } : null,
           report: report ? { char_count: report.char_count, posted_at: report.posted_at, text: report.text } : null,
           morning_report: morningReport ? { char_count: morningReport.char_count, posted_at: morningReport.posted_at, text: morningReport.text } : null,
@@ -257,11 +242,6 @@ function createServer() {
 
       const posted      = enriched.filter(m => m.check?.posted).length;
       const missing     = enriched.length - posted;
-      const flagged     = enriched.filter(m => (m.check?.flag_count ?? 0) > 0).length;
-      const critical    = enriched.filter(m => (m.check?.flag_count ?? 0) >= 3).length;
-      const redCount    = enriched.filter(m => m.check?.signal === 'red').length;
-      const yellowCount = enriched.filter(m => m.check?.signal === 'yellow').length;
-      const greenCount  = enriched.filter(m => m.check?.signal === 'green').length;
 
       const topGroups = allGroups.filter(g => !g.parent_id);
       const groupTree = topGroups.map(top => {
@@ -279,35 +259,12 @@ function createServer() {
         return { id: top.id, name: top.name, children, direct_members: enriched.filter(m => m.user.group?.id === top.id) };
       });
 
-      // 組織全体スコア
-      const postedMs  = enriched.filter(m => m.check?.posted);
-      const orgScores = postedMs.map(m => m.check?.sentiment_score).filter(s => s != null);
-      const orgScore  = orgScores.length ? orgScores.reduce((a, b) => a + b, 0) / orgScores.length : null;
-      const orgSignal = orgScore != null
-        ? (orgScore <= 0.35 ? 'red' : orgScore < 0.60 ? 'yellow' : 'green')
-        : (redCount > 0 ? 'red' : yellowCount > 0 ? 'yellow' : greenCount > 0 ? 'green' : null);
-      const postingRate = enriched.length ? postedMs.length / enriched.length : 0;
-      const dualPostedMs = enriched.filter(m => m.check?.morning_posted && m.check?.evening_posted);
-      const dualPostRate = enriched.length ? dualPostedMs.length / enriched.length : 0;
-      const opct = Math.round(postingRate * 100);
-      const dpct = Math.round(dualPostRate * 100);
-      const ocond = orgSignal === 'red' ? '要警戒' : orgSignal === 'yellow' ? '要注意' : '良好';
-      const oScorePart = orgScore != null ? `平均スコア${orgScore.toFixed(2)}（${ocond}）` : `コンディション${orgSignal ? ocond : '計算中'}`;
-      const oFlags = [redCount > 0 ? `赤信号${redCount}名` : '', yellowCount > 0 ? `黄信号${yellowCount}名` : ''].filter(Boolean);
-      const orgSummary = `投稿率${opct}%・二回投稿率${dpct}%・${oScorePart}${oFlags.length ? '。' + oFlags.join('・') + 'が要注意' : ''}。`;
-      const orgStats = { score: orgScore, signal: orgSignal, posting_rate: postingRate, dual_post_rate: dualPostRate, summary: orgSummary };
-
       res.json({
         date,
         config: {
-          late_night_hour: cfg.get('late_night_hour'),
-          sentiment_threshold: cfg.get('sentiment_threshold'),
-          volume_change_pct: cfg.get('volume_change_pct'),
-          volume_lookback_days: cfg.get('volume_lookback_days'),
           summary_cron: cfg.get('summary_cron'),
         },
-        stats: { total: enriched.length, posted, missing, flagged, critical, redCount, yellowCount, greenCount },
-        org_stats: orgStats,
+        stats: { total: enriched.length, posted, missing },
         members: enriched,
         group_tree: groupTree,
         ungrouped: enriched.filter(m => !m.user.group),
@@ -327,6 +284,7 @@ function createServer() {
       const allGroups  = db.getAllGroups();
       const allMembers = db.getActiveMembers();
       const checks     = db.getChecksForDateRange(from, to);
+      const reports    = db.getReportsForDateRange(from, to);
       const groupMap   = Object.fromEntries(allGroups.map(g => [g.id, g]));
 
       // 日付リストを生成
@@ -338,27 +296,23 @@ function createServer() {
         d.setUTCDate(d.getUTCDate() + 1);
       }
 
-      // user別にチェックをインデックス化
+      // user別にチェックをインデックス化（振り返りスコア・成長メモ用）
       const checksByUser = {};
       for (const c of checks) {
         if (!checksByUser[c.user_id]) checksByUser[c.user_id] = {};
         checksByUser[c.user_id][c.check_date] = c;
       }
 
-      const calcSig = c => {
-        if (!c?.posted) return null;
-        if (c.late_night_flag >= 2) return 'red';
-        const s = c.sentiment_score;
-        if (s != null) { if (s <= 0.35) return 'red'; }
-        if (c.late_night_flag >= 1) return 'yellow';
-        if (s != null) { if (s < 0.60) return 'yellow'; }
-        if (c.late_post_flag) return 'yellow';
-        if (c.volume_flag)    return 'yellow';
-        return 'green';
-      };
+      // user×date×type で日報をインデックス化（勝敗は日報テキストから都度判定）
+      const reportsByUser = {};
+      for (const r of reports) {
+        (reportsByUser[r.user_id] ??= {})[r.report_date] ??= {};
+        reportsByUser[r.user_id][r.report_date][r.report_type] = r;
+      }
 
       const members = allMembers.map(member => {
-        const userChecks = checksByUser[member.user_id] || {};
+        const userChecks  = checksByUser[member.user_id]  || {};
+        const userReports = reportsByUser[member.user_id] || {};
         let group = null;
         if (member.group_id && groupMap[member.group_id]) {
           const g = groupMap[member.group_id];
@@ -372,29 +326,32 @@ function createServer() {
 
         const days = {};
         for (const date of dates) {
-          const c = userChecks[date];
-          days[date] = c ? {
-            posted: c.posted,
-            wins_text:        c.wins_text        || null,
-            losses_text:      c.losses_text       || null,
-            reflection_score: c.reflection_score != null ? c.reflection_score : null,
-            growth_note:      c.growth_note       || null,
-            signal:           calcSig(c),
-            morning_posted:   c.morning_posted    || 0,
-            evening_posted:   c.evening_posted    || 0,
-            dual_post_flag:   c.dual_post_flag    || 0,
-            sentiment_score:  c.sentiment_score,
-            sentiment_summary: c.sentiment_summary || null,
-          } : { posted: 0 };
+          const c    = userChecks[date];
+          const reps = userReports[date] || {};
+          const morningPosted = !!reps.morning;
+          const eveningPosted = !!reps.evening;
+          const posted = morningPosted || eveningPosted;
+          if (!posted) { days[date] = { posted: 0 }; continue; }
+
+          // 勝敗は日報テキストから読み取り時に再判定（保存値に依存しない、夜優先・朝もフォロー）
+          const verdict = verdictForDay({ eveningText: reps.evening?.text, morningText: reps.morning?.text });
+          days[date] = {
+            posted: 1,
+            wins_text:        verdict === 'win'  ? '勝ち' : null,
+            losses_text:      verdict === 'loss' ? '負け' : null,
+            reflection_score: c && c.reflection_score != null ? c.reflection_score : null,
+            growth_note:      (c && c.growth_note) || null,
+            morning_posted:   morningPosted ? 1 : 0,
+            evening_posted:   eveningPosted ? 1 : 0,
+            dual_post_flag:   (morningPosted && eveningPosted) ? 0 : 1,
+          };
         }
 
         const postedDays  = Object.values(days).filter(d => d.posted);
-        // wins_text が優先（旧データで両方セットされている場合も wins を勝ちとして扱う）
+        // 勝率の母数は「勝敗を記入した日」のみ（wins_text=勝ち / losses_text=負け）
         const winsDays    = postedDays.filter(d => d.wins_text);
         const lossesDays  = postedDays.filter(d => !d.wins_text && d.losses_text);
         const refScores   = postedDays.map(d => d.reflection_score).filter(s => s != null);
-        const sigCounts   = { red: 0, yellow: 0, green: 0 };
-        for (const d of postedDays) { if (d.signal) sigCounts[d.signal] = (sigCounts[d.signal] || 0) + 1; }
 
         return {
           user: { user_id: member.user_id, display_name: member.display_name, real_name: member.real_name, group },
@@ -402,10 +359,10 @@ function createServer() {
           summary: {
             wins_count:    winsDays.length,
             losses_count:  lossesDays.length,
+            judged_count:  winsDays.length + lossesDays.length,  // 勝率の母数
             posted_count:  postedDays.length,
             total_days:    dates.length,
             avg_reflection: refScores.length ? refScores.reduce((a, b) => a + b, 0) / refScores.length : null,
-            signals:       sigCounts,
           },
         };
       });
@@ -425,6 +382,78 @@ function createServer() {
       res.json({ ok: true, date, count: results.length });
     } catch (e) {
       res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // 投稿率レポートを手動送信
+  server.post('/api/report/morning', requireAdmin, async (req, res) => {
+    try {
+      await postMorningReport();
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // 診断: 日付範囲の各eveningレポートを「今のロジックで再判定」して勝敗の根拠行を返す
+  // 例) /api/debug/verdicts?from=2026-06-08&to=2026-06-14
+  server.get('/api/debug/verdicts', requireAdmin, (req, res) => {
+    try {
+      const from = req.query.from || todayJst();
+      const to   = req.query.to   || from;
+      const reports = db.getReportsForDateRange(from, to).filter(r => r.report_type === 'evening');
+      const memberMap = Object.fromEntries(db.getActiveMembers().map(m => [m.user_id, m]));
+      const out = reports.map(r => {
+        const { verdict, text } = extractVerdict(r.text);
+        // 「勝敗」を含む行の周辺を抜き出して根拠を可視化
+        const lines = (r.text || '').replace(/\r\n/g, '\n').split('\n');
+        const idx = lines.findIndex(l => /勝敗/.test(l.replace(/[*_~`]|:[a-z0-9_+'-]+:/gi, '')));
+        const context = idx >= 0 ? lines.slice(idx, idx + 3).join(' ⏎ ') : '（「勝敗」行なし）';
+        const m = memberMap[r.user_id];
+        return {
+          user: m ? (m.real_name || m.display_name || m.user_id) : r.user_id,
+          date: r.report_date,
+          verdict: verdict || '判定なし(母数外)',
+          matched: text,
+          勝敗行の根拠: context.slice(0, 160),
+        };
+      });
+      const wins = out.filter(o => o.verdict === 'win').length;
+      const loss = out.filter(o => o.verdict === 'loss').length;
+      const none = out.length - wins - loss;
+      res.json({ from, to, total: out.length, wins, loss, none, judged: wins + loss,
+                 win_rate: (wins + loss) ? Math.round(wins / (wins + loss) * 100) + '%' : '-', rows: out });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // デバッグ: DBに保存されたeveningレポートのテキスト全文と勝敗判定結果を確認
+  server.get('/api/debug/reports', requireAdmin, (req, res) => {
+    try {
+      const date  = req.query.date || todayJst();
+      const limit = parseInt(req.query.limit || '10', 10);
+      const rows  = db.getDb().prepare(`
+        SELECT dr.user_id, dr.report_date, dr.text,
+               cc.wins_text, cc.losses_text, cc.posted,
+               m.real_name, m.display_name
+        FROM daily_reports dr
+        LEFT JOIN condition_checks cc ON dr.user_id = cc.user_id AND dr.report_date = cc.check_date
+        LEFT JOIN members m ON dr.user_id = m.user_id
+        WHERE dr.report_type = 'evening'
+          AND dr.report_date = ?
+        ORDER BY dr.posted_at DESC
+        LIMIT ?
+      `).all(date, limit);
+      res.json(rows.map(r => ({
+        user:       r.real_name || r.display_name || r.user_id,
+        date:       r.report_date,
+        wins_text:  r.wins_text,
+        losses_text: r.losses_text,
+        text_full:  r.text,
+      })));
+    } catch (e) {
+      res.status(500).json({ error: e.message });
     }
   });
 
@@ -487,140 +516,14 @@ function createServer() {
     const { value } = req.body;
     try {
       cfg.set(key, value);
-      if (key === 'summary_cron') reloadSummaryCron();
+      if (key === 'summary_cron')        reloadSummaryCron();
+      if (key === 'morning_report_cron') reloadMorningReportCron();
       res.json({ ok: true });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message });
     }
   });
 
-  // ── Weekly ───────────────────────────────────────────────────────────────
-  server.get('/api/weekly', (req, res) => {
-    try {
-      const date  = req.query.date || todayJst();
-      const today = todayJst();
-      const days  = weekDays(date);
-      const allGroups  = db.getAllGroups();
-      const allMembers = db.getActiveMembers();
-      const groupMap   = Object.fromEntries(allGroups.map(g => [g.id, g]));
-
-      const reports = db.getReportsForDateRange(days[0], days[6]);
-      const checks  = db.getChecksForDateRange(days[0], days[6]);
-      const rMap = {};
-      for (const r of reports) rMap[`${r.user_id}:${r.report_date}`] = r;
-      const cMap = {};
-      for (const c of checks)  cMap[`${c.user_id}:${c.check_date}`]  = c;
-
-      const enriched = allMembers.map(member => {
-        let group = null;
-        if (member.group_id && groupMap[member.group_id]) {
-          const g = groupMap[member.group_id];
-          let parent = null;
-          if (g.parent_id && groupMap[g.parent_id]) {
-            const p = groupMap[g.parent_id];
-            const gp = p.parent_id && groupMap[p.parent_id] ? { id: groupMap[p.parent_id].id, name: groupMap[p.parent_id].name, parent: null } : null;
-            parent = { id: p.id, name: p.name, parent: gp };
-          }
-          group = { id: g.id, name: g.name, parent };
-        }
-        const dayData = {};
-        for (const day of days) {
-          const report = rMap[`${member.user_id}:${day}`] || null;
-          const check  = cMap[`${member.user_id}:${day}`] || null;
-          dayData[day] = {
-            posted: !!(report || check?.posted),
-            checked: !!check,
-            flag_count:      check?.flag_count      ?? 0,
-            late_night_flag: check?.late_night_flag  ?? 0,
-            late_post_flag:  check?.late_post_flag   ?? 0,
-            sentiment_flag:  check?.sentiment_flag   ?? 0,
-            sentiment_score: check?.sentiment_score  ?? null,
-            volume_flag:     check?.volume_flag      ?? 0,
-            morning_posted:  check?.morning_posted   ?? 0,
-            evening_posted:  check?.evening_posted   ?? 0,
-            dual_post_flag:  check?.dual_post_flag   ?? 0,
-            reflection_score: check?.reflection_score ?? null,
-            wins_text:       check?.wins_text        ?? null,
-            losses_text:     check?.losses_text      ?? null,
-            posted_at:  report?.posted_at || null,
-            char_count: report?.char_count ?? null,
-            is_future:  day > today,
-            is_weekend: isWeekend(day),
-          };
-        }
-        return { user: { user_id: member.user_id, display_name: member.display_name, real_name: member.real_name, group, is_active: member.is_active }, days: dayData };
-      });
-
-      const topGroups = allGroups.filter(g => !g.parent_id);
-      const groupTree = topGroups.map(top => {
-        const children = allGroups.filter(g => g.parent_id === top.id).map(child => {
-          const grandchildren = allGroups.filter(g => g.parent_id === child.id).map(gc => ({
-            id: gc.id, name: gc.name,
-            members: enriched.filter(m => m.user.group?.id === gc.id),
-          }));
-          return {
-            id: child.id, name: child.name,
-            children: grandchildren,
-            members: enriched.filter(m => m.user.group?.id === child.id),
-          };
-        });
-        return { id: top.id, name: top.name, children, direct_members: enriched.filter(m => m.user.group?.id === top.id) };
-      });
-
-      let totalExpected = 0, totalPosted = 0, totalFlagged = 0;
-      for (const m of enriched) for (const day of days) {
-        const d = m.days[day];
-        if (d.is_future || d.is_weekend) continue;
-        totalExpected++;
-        if (d.posted) { totalPosted++; if (d.flag_count > 0) totalFlagged++; }
-      }
-
-      // 日次ごとの組織スコア
-      const weekdays = days.filter(d => !isWeekend(d));
-      const dayOrgStats = {};
-      for (const day of weekdays) {
-        if (day > today) { dayOrgStats[day] = null; continue; }
-        const dayMs   = enriched.filter(m => !m.days[day]?.is_weekend);
-        const postedD = dayMs.filter(m => m.days[day]?.posted);
-        const scoresD = postedD.map(m => m.days[day]?.sentiment_score).filter(s => s != null);
-        const orgScoreD = scoresD.length ? scoresD.reduce((a, b) => a + b, 0) / scoresD.length : null;
-        let rD = 0, yD = 0, gD = 0;
-        for (const m of postedD) {
-          const dd = m.days[day];
-          const s = dd.sentiment_score;
-          let sig = 'green';
-          if (dd.late_night_flag >= 2) sig = 'red';
-          else if (s != null && s <= 0.35) sig = 'red';
-          else if (dd.late_night_flag === 1) sig = 'yellow';
-          else if (s != null && s < 0.60) sig = 'yellow';
-          else if (dd.late_post_flag) sig = 'yellow';
-          else if (dd.volume_flag) sig = 'yellow';
-          if (sig === 'red') rD++; else if (sig === 'yellow') yD++; else gD++;
-        }
-        const orgSignalD = orgScoreD != null
-          ? (orgScoreD <= 0.35 ? 'red' : orgScoreD < 0.60 ? 'yellow' : 'green')
-          : (rD > 0 ? 'red' : yD > 0 ? 'yellow' : gD > 0 ? 'green' : null);
-        const postingRateD = dayMs.length ? postedD.length / dayMs.length : 0;
-        const pctD = Math.round(postingRateD * 100);
-        const condD = orgSignalD === 'red' ? '要警戒' : orgSignalD === 'yellow' ? '要注意' : '良好';
-        const flagsD = [rD > 0 ? `赤${rD}名` : '', yD > 0 ? `黄${yD}名` : ''].filter(Boolean);
-        const summaryD = orgScoreD != null
-          ? `スコア${orgScoreD.toFixed(2)}（${condD}）・投稿率${pctD}%${flagsD.length ? '・' + flagsD.join('/') : ''}`
-          : `投稿率${pctD}%`;
-        dayOrgStats[day] = { score: orgScoreD, signal: orgSignalD, posting_rate: postingRateD, summary: summaryD, red_count: rD, yellow_count: yD };
-      }
-
-      res.json({
-        week_start: days[0], week_end: days[6], days, today,
-        group_tree: groupTree, ungrouped: enriched.filter(m => !m.user.group),
-        weekly_stats: { total_expected: totalExpected, total_posted: totalPosted, total_flagged: totalFlagged },
-        day_org_stats: dayOrgStats,
-      });
-    } catch (e) {
-      console.error('/api/weekly error:', e);
-      res.status(500).json({ error: e.message });
-    }
-  });
 
   // ── Members ──────────────────────────────────────────────────────────────
   server.get('/api/members', (req, res) => {
@@ -730,56 +633,47 @@ function createServer() {
         if (!check)         return `【${name}】(${group}): 本日未チェック`;
         if (!check.posted)  return `【${name}】(${group}): 本日未投稿`;
 
-        const sig     = check.signal || '不明';
-        const score   = check.sentiment_score != null ? check.sentiment_score.toFixed(2) : '—';
         const refScore = check.reflection_score != null ? check.reflection_score.toFixed(2) : '—';
-        const summary = check.sentiment_summary ? `「${check.sentiment_summary}」` : 'なし';
-        const flags   = [
-          check.late_night_flag >= 2 ? '深夜投稿(23〜5時)' : check.late_night_flag === 1 ? '夜間投稿(22時台)' : '',
-          check.dual_post_flag ? `片方のみ投稿(朝=${check.morning_posted?'✓':'×'}/夜=${check.evening_posted?'✓':'×'})` : '',
-          check.late_post_flag ? '投稿遅れ' : '',
-          check.volume_flag ? `文量${check.volume_ratio < 1 ? '減少' : '増加'}(${Math.abs(Math.round((check.volume_ratio - 1) * 100))}%)` : '',
-        ].filter(Boolean).join(', ');
-        const winsLine   = check.wins_text   ? `\n  本日の勝ち: ${check.wins_text}` : '';
-        const lossesLine = check.losses_text ? `\n  本日の負け: ${check.losses_text}` : '';
+        const verdict  = check.wins_text ? '🏆勝ち' : check.losses_text ? '💪負け' : '判定なし';
+        const winsLine   = check.wins_text   ? `\n  勝ち内容: ${check.wins_text}` : '';
+        const lossesLine = check.losses_text ? `\n  負け内容: ${check.losses_text}` : '';
+        const growthLine = check.growth_note ? `\n  成長メモ: ${check.growth_note}` : '';
 
-        // 直近7日の推移（新→旧）
+        // 直近7日の勝敗推移（新→旧）
         const trend = (memberTrends[m.user_id] || [])
           .filter(c => c.posted && c.check_date !== date)
           .sort((a, b) => b.check_date.localeCompare(a.check_date))
           .slice(0, 7)
           .map(c => {
-            const em = c.signal === 'red' ? '🔴' : c.signal === 'yellow' ? '🟡' : '🟢';
+            const wl = c.wins_text ? '🏆' : c.losses_text ? '💪' : '・';
             const dp = (c.morning_posted && c.evening_posted) ? '☀️🌙' : c.morning_posted ? '☀️' : c.evening_posted ? '🌙' : '📭';
-            return `${em}${dp}`;
+            return `${wl}${dp}`;
           })
           .join(' ');
 
         return `【${name}】(${group})
-  本日: 信号=${sig}, 感情=${score}, 振返スコア=${refScore}${flags ? ', フラグ=[' + flags + ']' : ''}
-  投稿状況: 朝=${check.morning_posted?'✓':'×'} / 夜=${check.evening_posted?'✓':'×'}
-  日報サマリー: ${summary}${winsLine}${lossesLine}
-  直近7日推移: ${trend || 'データなし'}`;
+  本日: 勝敗=${verdict}, 振返スコア=${refScore}
+  投稿状況: 朝=${check.morning_posted?'✓':'×'} / 夜=${check.evening_posted?'✓':'×'}${winsLine}${lossesLine}${growthLine}
+  直近7日推移(勝敗/投稿): ${trend || 'データなし'}`;
       });
 
       const systemPrompt = `あなたは「バディくん」という名前のAIアシスタントです。
-日報チェッカーシステムのデータをもとに、マネージャーやリーダーがチームメンバーのコンディションを把握し、適切なフォローアップを行えるよう支援します。
+日報チェッカーシステムのデータをもとに、マネージャーやリーダーがチームメンバーの勝ち負け・振り返りを把握し、適切なフォローアップを行えるよう支援します。
 
 ## 基本姿勢
 - 温かく親しみやすい口調で、でもプロフェッショナルに対応する
-- 感情スコアや日報サマリーはあくまで参考情報として扱い、「〜の傾向が見られます」「〜かもしれません」と観察として伝える
+- 勝敗や振り返りスコアはあくまで参考情報として扱い、「〜の傾向が見られます」「〜かもしれません」と観察として伝える
 - 具体的なメンバー名を挙げながら実践的なアドバイスをする
 - 1on1のアドバイスは具体的な質問例や話題を提案する
 - 回答は適切な長さにする（箇条書きを活用して読みやすく）
 
-## 今日のメンバーコンディション（${date}）
+## 今日のメンバーの勝ち負け・振り返り（${date}）
 
 ${memberLines.join('\n\n')}
 
 ## 凡例
-- 信号: 🟢緑=良好, 🟡黄=要注意, 🔴赤=要警戒
-- 感情スコア: 0.00〜1.00（高いほどポジティブ）
-  - 0.80以上: 良好、0.60〜0.79: やや注意、0.40〜0.59: 要観察、0.39以下: 要対応
+- 勝敗: 日報の「勝敗」欄に基づく（🏆勝ち / 💪負け / 判定なし=未記入）
+- 振返スコア: 0.00〜1.00（高いほど振り返りが具体的で深い）
 
 回答は日本語でお願いします。`;
 

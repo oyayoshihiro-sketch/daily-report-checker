@@ -43,4 +43,10 @@ async function getChannelHistory(channelId, oldest, latest) {
   return msgs;
 }
 
-module.exports = { getChannelMembers, getUserInfo, getChannelHistory };
+async function postMessage(channelId, text, blocks) {
+  const params = { channel: channelId, text };
+  if (blocks && blocks.length) params.blocks = blocks;
+  return getClient().chat.postMessage(params);
+}
+
+module.exports = { getChannelMembers, getUserInfo, getChannelHistory, postMessage };

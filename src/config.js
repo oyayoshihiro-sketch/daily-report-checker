@@ -16,7 +16,7 @@ const VALID_KEYS = new Set([
   'late_night_hour', 'sentiment_threshold', 'volume_lookback_days',
   'volume_change_pct', 'volume_min_samples', 'summary_cron',
   'report_channel_id', 'workflow_bot_id', 'user_id_regex',
-  'sentiment_prompt',
+  'sentiment_prompt', 'morning_report_channel', 'morning_report_cron',
 ]);
 
 function set(key, value) {
@@ -25,10 +25,10 @@ function set(key, value) {
   }
 
   // summary_cronはnode-cronでvalidateできる
-  if (key === 'summary_cron') {
+  if (key === 'summary_cron' || key === 'morning_report_cron') {
     const cron = require('node-cron');
     if (!cron.validate(value)) {
-      throw new Error(`無効なcron式: \`${value}\`\n例: \`0 23 * * *\` (毎日23時)`);
+      throw new Error(`無効なcron式: \`${value}\`\n例: \`0 9 * * 1-5\` (平日9時)`);
     }
   }
 
