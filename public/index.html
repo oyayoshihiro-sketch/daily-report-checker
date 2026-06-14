@@ -1713,8 +1713,11 @@ function wlBodyWeekly(data) {
     ...(ungrouped.length ? [wlRangeDeptBlock({name:'未分類', members: ungrouped}, renderWlWeekCard)] : []),
   ].filter(Boolean).join('');
   const gridCols = (weekRanking && reflRanking) ? '' : 'grid-template-columns:1fr;';
+  const postRanks = [wlPostRateLowRanking(members), wlPostRateHighRanking(members)].filter(Boolean).join('');
+  const postWrap  = postRanks ? `<div class="wl-rankings-wrap" style="margin-bottom:16px">${postRanks}</div>` : '';
   return wlHeroRange(members, '今週ゼロ')
     + (rankWrap ? `<div class="wl-rankings-wrap" style="${gridCols}margin-bottom:16px">${rankWrap}</div>` : '')
+    + postWrap
     + rateGrid
     + (depts || `<div class="empty"><div class="empty-ico">📭</div><div class="empty-ttl">データなし</div></div>`);
 }
@@ -1886,15 +1889,19 @@ function wlMorningAlert(dash) {
   </div>`;
 }
 
-// 投稿率の計算（平日かつ消化日のみ）
-function calcPostRates(monthMembers) {
+// 投稿率の計算 = 勝ち負け判定がついた日数 ÷ 経過営業日数
+//   分子: その日の日報に「勝敗」判定（勝ち or 負け）が付いた営業日
+//   分母: 期間内の平日のうち、今日までに経過した日（未来日・週末は除外）
+//   ※「朝の宣言だけ」「勝敗欄なし」の日は分子に含めない（だから100%が乱発しない）
+function calcPostRates(rangeMembers) {
   const isWeekday = date => { const d = new Date(date + 'T12:00:00Z').getDay(); return d >= 1 && d <= 5; };
-  return [...monthMembers].map(m => {
-    const weekdayEntries = Object.entries(m.days || {}).filter(([date]) => isWeekday(date) && date <= S.date);
+  const todayStr = today();
+  return [...rangeMembers].map(m => {
+    const weekdayEntries = Object.entries(m.days || {}).filter(([date]) => isWeekday(date) && date <= todayStr);
     const totalWeekdays  = weekdayEntries.length;
-    const postedWeekdays = weekdayEntries.filter(([, d]) => d.posted).length;
-    const postRate       = totalWeekdays > 0 ? Math.round(postedWeekdays / totalWeekdays * 100) : 0;
-    return { ...m, totalWeekdays, postedWeekdays, postRate };
+    const judgedWeekdays = weekdayEntries.filter(([, d]) => d.wins_text || d.losses_text).length;
+    const postRate       = totalWeekdays > 0 ? Math.round(judgedWeekdays / totalWeekdays * 100) : 0;
+    return { ...m, totalWeekdays, judgedWeekdays, postRate };
   }).filter(m => m.totalWeekdays > 0);
 }
 
@@ -1905,7 +1912,7 @@ function _postRateRow(m) {
   return `<div class="wl-alert-row">
     <div class="wl-rank-info">
       <div class="wl-rank-name">${name}</div>
-      <div class="wl-rank-sub">${[grp, `${m.postedWeekdays}/${m.totalWeekdays}営業日`].filter(Boolean).join(' · ')}</div>
+      <div class="wl-rank-sub">${[grp, `判定 ${m.judgedWeekdays}/${m.totalWeekdays}営業日`].filter(Boolean).join(' · ')}</div>
     </div>
     <span style="font-size:15px;font-weight:900;color:${color}">${m.postRate}<span style="font-size:10px;font-weight:600">%</span></span>
   </div>`;
@@ -1916,7 +1923,7 @@ function wlPostRateLowRanking(monthMembers) {
   if (!monthMembers) return '';
   if (!S.wlRankExpand) S.wlRankExpand = {};
   const expanded = !!S.wlRankExpand.postLow;
-  const all  = calcPostRates(monthMembers).sort((a, b) => a.postRate - b.postRate || a.postedWeekdays - b.postedWeekdays);
+  const all  = calcPostRates(monthMembers).sort((a, b) => a.postRate - b.postRate || a.judgedWeekdays - b.judgedWeekdays);
   if (!all.length) return '';
   const list = expanded ? all : all.slice(0, 5);
   const rows = list.map(_postRateRow).join('');
@@ -1937,7 +1944,7 @@ function wlPostRateHighRanking(monthMembers) {
   if (!monthMembers) return '';
   if (!S.wlRankExpand) S.wlRankExpand = {};
   const expanded = !!S.wlRankExpand.postHigh;
-  const all  = calcPostRates(monthMembers).sort((a, b) => b.postRate - a.postRate || b.postedWeekdays - a.postedWeekdays);
+  const all  = calcPostRates(monthMembers).sort((a, b) => b.postRate - a.postRate || b.judgedWeekdays - a.judgedWeekdays);
   if (!all.length) return '';
   const list = expanded ? all : all.slice(0, 5);
   const rows = list.map(_postRateRow).join('');
@@ -1967,12 +1974,14 @@ function wlRankingsDaily(monthMembers, dash) {
 function wlBodyMonthly(data) {
   const { members } = data;
   const { groups, ungrouped } = wlGroupMembers(members);
+  const postRanks = [wlPostRateLowRanking(members), wlPostRateHighRanking(members)].filter(Boolean).join('');
+  const postWrap  = postRanks ? `<div class="wl-rankings-wrap" style="margin-bottom:16px">${postRanks}</div>` : '';
   const rateGrid = wlOrgRateGridRange(groups, ungrouped);
   const depts = [
     ...groups.map(g => wlRangeDeptBlock(g, renderWlMonthCard)),
     ...(ungrouped.length ? [wlRangeDeptBlock({name:'未分類', members: ungrouped}, renderWlMonthCard)] : []),
   ].filter(Boolean).join('');
-  return wlHeroRange(members, '今月ゼロ') + rateGrid
+  return wlHeroRange(members, '今月ゼロ') + postWrap + rateGrid
     + (depts || `<div class="empty"><div class="empty-ico">📭</div><div class="empty-ttl">データなし</div></div>`);
 }
 
