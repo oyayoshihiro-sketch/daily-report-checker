@@ -1106,6 +1106,14 @@ async function fetchWinsRange(from, to) {
   return r;
 }
 
+// 期間指定タブの開始日/終了日を更新（同じ wins-range 経路を期間違いで呼ぶだけ）
+function setCustomRange(which, val) {
+  if (!val) return;
+  if (which === 'from') S.customFrom = val;
+  else                  S.customTo   = val;
+  render();
+}
+
 /* ─── エントリーポイント ─── */
 function renderWinsV() {
   const period = S.winsPeriod || 'daily';
@@ -1130,6 +1138,23 @@ function renderWinsV() {
     return wlBar(period) + wlHeroDaily(S.dash) + dailyRanking + wlBodyDaily(S.dash);
   }
 
+  // 期間指定（カスタム）タブ — 既存の wins-range API・集計をそのまま任意期間で再利用
+  if (period === 'custom') {
+    const from = S.customFrom || monthRange.from;
+    const to   = S.customTo   || (S.date > today() ? today() : S.date);
+    const cr   = { from, to };
+    if (from > to) {
+      return wlBar(period, cr) + `<div class="empty"><div class="empty-ico">⚠️</div><div class="empty-ttl">期間が逆です</div><p>開始日（${from}）は終了日（${to}）より前にしてください。</p></div>`;
+    }
+    const ckey = `${from}_${to}`;
+    if (!S.winsRange[ckey]) {
+      fetchWinsRange(from, to).then(render);
+      return wlBar(period, cr) + `<div class="spin-wrap"><div class="spinner"></div></div>`;
+    }
+    const cdata = S.winsRange[ckey];
+    return wlBar(period, cr) + wlRankings(cdata.members, '🏆 期間内の勝率ランキング') + wlBodyMonthly(cdata);
+  }
+
   const range = period === 'weekly' ? wlWeekRange(S.date) : monthRange;
   const key   = `${range.from}_${range.to}`;
   if (!S.winsRange[key]) {
@@ -1144,14 +1169,21 @@ function renderWinsV() {
 
 /* ─── トップバー ─── */
 function wlBar(period, range) {
-  const tabs = ['daily','weekly','monthly'].map(p => {
-    const lbl = p === 'daily' ? '日次' : p === 'weekly' ? '週次' : '月次';
+  const tabs = ['daily','weekly','monthly','custom'].map(p => {
+    const lbl = p === 'daily' ? '日次' : p === 'weekly' ? '週次' : p === 'monthly' ? '月次' : '期間指定';
     return `<button class="wl-period-tab${p === period ? ' active' : ''}" onclick="S.winsPeriod='${p}';render()">${lbl}</button>`;
   }).join('');
 
   let nav = '';
   if (period === 'daily') {
     nav = `<input class="inp" type="date" id="w-inp" value="${S.date}" max="${today()}" style="width:148px">`;
+  } else if (period === 'custom') {
+    const cf = (range && range.from) || '', ct = (range && range.to) || '';
+    nav = `<div class="wl-period-nav" style="gap:4px">
+      <input class="inp" type="date" value="${cf}" max="${today()}" onchange="setCustomRange('from', this.value)" style="width:140px" title="開始日">
+      <span style="color:var(--c-t3)">〜</span>
+      <input class="inp" type="date" value="${ct}" max="${today()}" onchange="setCustomRange('to', this.value)" style="width:140px" title="終了日">
+    </div>`;
   } else {
     const prev = wlShiftDate(S.date, period, -1);
     const next  = wlShiftDate(S.date, period, +1);
@@ -1173,6 +1205,7 @@ function wlBar(period, range) {
 
   const subLabel = period === 'daily' ? S.date + ' — 今日の勝ち・負け'
     : period === 'weekly' ? '週次集計 — 曜日ごとの勝ち・負け'
+    : period === 'custom' ? `期間指定 — ${(range && range.from) || ''}〜${(range && range.to) || ''} の勝ち・負け`
     : '月次集計 — 月間の勝ち・負け一覧';
 
   return `<div class="topbar">
@@ -1713,7 +1746,7 @@ function renderWlMonthCard(m) {
   </div>`;
 }
 
-function wlWinsRanking(members) {
+function wlWinsRanking(members, title = '🏆 月間勝率ランキング') {
   const MEDALS = ['🥇','🥈','🥉','4️⃣','5️⃣'];
   const NUM_CLS = ['r1','r2','r3','r4','r5'];
   if (!S.wlRankExpand) S.wlRankExpand = {};
@@ -1754,7 +1787,7 @@ function wlWinsRanking(members) {
 
   return `<div class="wl-ranking">
     <div class="wl-ranking-ttl" onclick="S.wlRankExpand.wins=!S.wlRankExpand.wins;render()">
-      🏆 月間勝率ランキング${expanded ? '' : ` TOP${list.length}`}
+      ${title}${expanded ? '' : ` TOP${list.length}`}
       <span class="wl-rank-toggle">${expanded ? '▲' : '▼'}</span>
     </div>
     <div class="wl-rank-list">${rows}</div>
@@ -1808,8 +1841,8 @@ function wlReflRanking(members) {
   </div>`;
 }
 
-function wlRankings(members) {
-  const wins = wlWinsRanking(members);
+function wlRankings(members, winsTitle) {
+  const wins = wlWinsRanking(members, winsTitle);
   const refl = wlReflRanking(members);
   if (!wins && !refl) return '';
   if (!wins) return `<div class="wl-rankings-wrap" style="grid-template-columns:1fr">${refl}</div>`;
